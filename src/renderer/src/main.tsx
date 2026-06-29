@@ -1,2 +1,5 @@
 import { createRoot } from "react-dom/client";
-createRoot(document.getElementById("root")!).render(<div>pr-autopilot</div>);
+import { App } from "./App";
+import "./styles.css";
+
+createRoot(document.getElementById("root")!).render(<App />);
