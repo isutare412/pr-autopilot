@@ -16,6 +16,11 @@ const api = {
     ipcRenderer.on("records-changed", fn);
     return () => ipcRenderer.removeListener("records-changed", fn);
   },
+  onFocusPr: (cb: (key: string) => void) => {
+    const fn = (_e: unknown, key: string) => cb(key);
+    ipcRenderer.on("focus-pr", fn);
+    return () => ipcRenderer.removeListener("focus-pr", fn);
+  },
 };
 contextBridge.exposeInMainWorld("api", api);
 export type Api = typeof api;
