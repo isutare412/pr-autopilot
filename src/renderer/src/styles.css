@@ -745,6 +745,86 @@ body {
   border-radius: 6px;
 }
 
+/* ---- Preferences form ---- */
+
+.prefs-form {
+  padding: 20px 24px;
+  max-width: 560px;
+}
+
+.prefs-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.prefs-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.prefs-row label {
+  flex: 0 0 180px;
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.prefs-row-check {
+  align-items: center;
+}
+
+.prefs-row-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.prefs-input,
+.prefs-select {
+  flex: 1;
+  min-height: unset;
+  padding: 7px 9px;
+  font: 13px/1 var(--ui);
+  resize: none;
+}
+
+.prefs-input-num {
+  flex: 0 0 100px;
+}
+
+.prefs-select {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.prefs-actions {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.prefs-save {
+  background: var(--accent);
+  color: #04130c;
+  border: 0;
+  border-radius: 6px;
+  padding: 9px 20px;
+  font: 600 13px var(--ui);
+  cursor: pointer;
+  letter-spacing: 0.02em;
+}
+
+.prefs-save:hover {
+  filter: brightness(1.08);
+}
+
 /* ---- Responsive fallback (the window is fixed-size desktop, but keep the grid sane) ---- */
 
 @media (max-width: 720px) {
