@@ -4,5 +4,5 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"], "jsx": "react-jsx",
     "strict": true, "esModuleInterop": true, "skipLibCheck": true, "noEmit": true
   },
-  "include": ["src/renderer/**/*.ts", "src/renderer/**/*.tsx"]
+  "include": ["src/renderer/**/*.ts", "src/renderer/**/*.tsx", "test/renderer/**/*.tsx", "test/renderer/**/*.d.ts"]
 }
