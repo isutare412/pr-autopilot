@@ -825,6 +825,13 @@ body {
   filter: brightness(1.08);
 }
 
+.prefs-restart-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font: 11px/1.5 var(--mono);
+  letter-spacing: 0.02em;
+}
+
 /* ---- Responsive fallback (the window is fixed-size desktop, but keep the grid sane) ---- */
 
 @media (max-width: 720px) {

@@ -51,7 +51,7 @@ app.whenReady().then(async () => {
 
     const trayHandlers: TrayHandlers = {
       openPr: (key) => showMain(key), openMain: () => showMain(),
-      pollNow: () => orch.runPoll().then(() => refreshTray(() => store.list(), trayHandlers)),
+      pollNow: () => orch.runPoll().then(() => refreshTray(() => store.list(), trayHandlers)).catch((e) => console.error("[pollNow]", e)),
       openPreferences: () => showPreferences(),
       toggleLogin: () => { settings = { ...settings, openAtLogin: !settings.openAtLogin }; saveSettings(dataDir, settings); applyLoginItem(settings.openAtLogin); refreshTray(() => store.list(), trayHandlers); trayHandlers.openAtLogin = settings.openAtLogin; },
       quit: () => { app.quit(); }, openAtLogin: settings.openAtLogin,
