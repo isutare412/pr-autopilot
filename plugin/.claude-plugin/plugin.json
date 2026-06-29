@@ -1,0 +1,5 @@
+{
+  "name": "pr-autopilot",
+  "description": "Review a GitHub pull request and emit a structured, prioritized review for human approval before anything is posted.",
+  "version": "0.1.0"
+}
