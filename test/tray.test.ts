@@ -1,0 +1,52 @@
+import { vi } from "vitest";
+vi.mock("electron", () => ({ Tray: class {}, Menu: {}, nativeImage: {} }));
+
+import { describe, it, expect } from "vitest";
+import { buildTrayMenu } from "../src/main/tray";
+import type { PrRecord } from "../src/main/core/schema";
+
+const rec = (over: Partial<PrRecord>): PrRecord => ({
+  key: "h/o/r#1", host: "h", owner: "o", repo: "r", number: 1, url: "u", title: "T",
+  author: "a", baseRef: "main", state: "NEEDS_REVIEW", mode: "first-review", headSha: "s",
+  draftVersion: 1, draft: null, feedbackHistory: [], postResult: null, postProgress: null,
+  error: null, discoveredAt: "", generatedAt: null, updatedAt: "", doneAt: null, ...over,
+});
+
+const handlers = {
+  openPr: vi.fn(), openMain: vi.fn(), pollNow: vi.fn(), openPreferences: vi.fn(),
+  toggleLogin: vi.fn(), quit: vi.fn(), openAtLogin: true,
+};
+
+describe("buildTrayMenu", () => {
+  it("lists active PRs as '#n repo — STATE', NEEDS_REVIEW first, hides DISMISSED", () => {
+    const records = [
+      rec({ key: "k-done", number: 2, repo: "r2", state: "DONE", title: "done" }),
+      rec({ key: "k-nr", number: 3, repo: "r3", state: "NEEDS_REVIEW", title: "needs" }),
+      rec({ key: "k-dis", number: 4, repo: "r4", state: "DISMISSED" }),
+    ];
+    const menu = buildTrayMenu(records, handlers);
+    const labels = menu.map((m) => m.label);
+    expect(labels).toContain("#3 r3 — NEEDS_REVIEW");
+    expect(labels).toContain("#2 r2 — DONE");
+    expect(labels.some((l) => l?.includes("#4"))).toBe(false);
+    // NEEDS_REVIEW sorts before DONE
+    expect(labels.indexOf("#3 r3 — NEEDS_REVIEW")).toBeLessThan(labels.indexOf("#2 r2 — DONE"));
+  });
+
+  it("includes the fixed controls and reflects openAtLogin as checked", () => {
+    const menu = buildTrayMenu([], handlers);
+    const byLabel = (s: string) => menu.find((m) => m.label === s);
+    expect(byLabel("Open PR Autopilot")).toBeTruthy();
+    expect(byLabel("Poll now")).toBeTruthy();
+    expect(byLabel("Preferences…")).toBeTruthy();
+    expect(byLabel("Quit")).toBeTruthy();
+    expect(byLabel("Launch at login")?.checked).toBe(true);
+  });
+
+  it("wires a PR item click to openPr(key)", () => {
+    const menu = buildTrayMenu([rec({ key: "k-nr", number: 3, repo: "r3", state: "NEEDS_REVIEW" })], handlers);
+    const item = menu.find((m) => m.label === "#3 r3 — NEEDS_REVIEW")!;
+    (item.click as () => void)();
+    expect(handlers.openPr).toHaveBeenCalledWith("k-nr");
+  });
+});
