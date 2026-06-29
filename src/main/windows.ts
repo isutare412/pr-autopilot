@@ -1,8 +1,11 @@
-import { BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, shell } from "electron";
 import { join } from "node:path";
 
 let main: BrowserWindow | null = null;
 let prefs: BrowserWindow | null = null;
+
+let isQuitting = false;
+app.on("before-quit", () => { isQuitting = true; });
 
 const PRELOAD = join(__dirname, "../preload/index.js");
 
@@ -18,7 +21,7 @@ export function showMain(key?: string): void {
       width: 1040, height: 720, show: false, title: "PR Autopilot",
       webPreferences: { preload: PRELOAD },
     });
-    main.on("close", (e) => { e.preventDefault(); main?.hide(); }); // hide, don't quit
+    main.on("close", (e) => { if (!isQuitting) { e.preventDefault(); main?.hide(); } }); // hide unless really quitting
     const r = rendererUrl("index");
     r.url ? main.loadURL(r.url) : main.loadFile(r.file!);
   }
