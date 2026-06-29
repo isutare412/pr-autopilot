@@ -36,4 +36,17 @@ describe("settings", () => {
     expect(loadSettings(dir)).toEqual(DEFAULT_SETTINGS);
     expect(loadSettings(dir).commentLanguage).toBe("en");
   });
+
+  it("defaults effort to high and round-trips a non-default effort", () => {
+    expect(DEFAULT_SETTINGS.effort).toBe("high");
+    const dir = mkdtempSync(join(tmpdir(), "pa-"));
+    saveSettings(dir, { ...DEFAULT_SETTINGS, effort: "max" });
+    expect(loadSettings(dir).effort).toBe("max");
+  });
+
+  it("falls back to defaults when effort is not a valid level", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pa-"));
+    writeFileSync(join(dir, "settings.json"), JSON.stringify({ effort: "turbo" }));
+    expect(loadSettings(dir).effort).toBe("high");
+  });
 });

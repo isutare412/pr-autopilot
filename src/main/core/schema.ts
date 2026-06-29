@@ -4,6 +4,9 @@ export const Language = z.enum(["en", "ko", "ja"]);
 export type Language = z.infer<typeof Language>;
 export const LANGUAGE_LABEL: Record<Language, string> = { en: "English", ko: "Korean", ja: "Japanese" };
 
+export const Effort = z.enum(["low", "medium", "high", "xhigh", "max"]);
+export type Effort = z.infer<typeof Effort>;
+
 export const Priority = z.enum(["Critical", "Major", "Minor", "Nit"]);
 export type Priority = z.infer<typeof Priority>;
 

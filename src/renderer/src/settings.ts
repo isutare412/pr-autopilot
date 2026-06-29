@@ -5,6 +5,7 @@
 export interface Settings {
   githubHost: string;
   commentLanguage: "en" | "ko" | "ja";
+  effort: "low" | "medium" | "high" | "xhigh" | "max";
   pollIntervalSec: number;
   genConcurrency: number;
   retentionDays: number;
@@ -18,6 +19,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   githubHost: "github.com",
   commentLanguage: "en",
+  effort: "high",
   pollIntervalSec: 600,
   genConcurrency: 2,
   retentionDays: 30,
