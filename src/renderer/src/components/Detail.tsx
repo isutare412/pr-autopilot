@@ -53,21 +53,19 @@ export function Detail({ record, onToggle, onEdit, onApprove, onDelete, onFeedba
     return (
       <>
         <PrHead number={record.number} title={record.title} />
-        <div className="error-box">
-          {e ? (
-            <>
-              <div className="error-head">
-                {record.state} · {e.step}
-              </div>
-              <pre className="error-msg">{e.message}</pre>
-            </>
-          ) : (
-            <div className="error-head">{record.state}</div>
-          )}
-          <button className="del-btn" onClick={onDelete} style={{ marginTop: 14 }}>
-            Delete
-          </button>
-        </div>
+        {e ? (
+          <div className="error-box">
+            <div className="error-head">
+              {record.state} · {e.step}
+            </div>
+            <pre className="error-msg">{e.message}</pre>
+            <button className="del-btn" onClick={onDelete} style={{ marginTop: 14 }}>
+              Delete
+            </button>
+          </div>
+        ) : (
+          <div className="empty">{record.state}</div>
+        )}
       </>
     );
   }

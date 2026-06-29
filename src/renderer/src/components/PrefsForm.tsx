@@ -121,6 +121,9 @@ export function PrefsForm({ settings, onSave }: Props) {
         <button type="submit" className="prefs-save">
           Save
         </button>
+        <p className="prefs-restart-note">
+          Changes to GitHub host, concurrency, retention, and repo filters take effect after the app restarts.
+        </p>
       </div>
     </form>
   );

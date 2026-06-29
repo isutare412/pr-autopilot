@@ -1,6 +1,5 @@
 import { ipcMain, BrowserWindow } from "electron";
 import { watch } from "node:fs";
-import { join } from "node:path";
 import { api, ApiDeps } from "./core/api";
 import { Store } from "./core/store";
 import { Orchestrator } from "./core/orchestrator";
@@ -28,17 +27,17 @@ export function registerIpc(d: IpcDeps): void {
   ipcMain.handle("settings:set", (_e, s: Settings) => { d.setSettings(s); return d.getSettings(); });
 }
 
-/** The Store rewrites index.json on every put; watch it and notify all windows.
+/** The Store rewrites index.json on every put; watch the directory and notify all windows.
+ *  Watching the directory (not the file) survives atomic rename-based writes.
  *  Covers both foreground IPC mutations and background poll/gen/post writes,
  *  including live genActivity updates. Debounced to coalesce bursts. */
 export function watchStoreForChanges(dataDir: string): void {
-  const index = join(dataDir, "index.json");
   let timer: NodeJS.Timeout | null = null;
   const emit = () => {
     timer = null;
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send("records-changed");
   };
-  try {
-    watch(index, () => { if (!timer) timer = setTimeout(emit, 150); });
-  } catch { /* index.json appears after first put; re-arm in index.ts after first poll */ }
+  watch(dataDir, (_e, name) => {
+    if (name === "index.json" && !timer) timer = setTimeout(emit, 150);
+  });
 }
