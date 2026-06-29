@@ -12,6 +12,24 @@
     "test:watch": "vitest",
     "dist": "electron-vite build && electron-builder --mac"
   },
+  "build": {
+    "appId": "com.redshore.pr-autopilot",
+    "productName": "PR Autopilot",
+    "files": ["out/**/*"],
+    "extraResources": [
+      { "from": "plugin", "to": "plugin" },
+      { "from": "build/guard.settings.json", "to": "build/guard.settings.json" },
+      { "from": "build/bin", "to": "build/bin" },
+      { "from": "build/trayTemplate.png", "to": "build/trayTemplate.png" }
+    ],
+    "mac": {
+      "target": "dir",
+      "category": "public.app-category.developer-tools",
+      "extendInfo": { "LSUIElement": true },
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    }
+  },
   "dependencies": { "zod": "^3.23.8" },
   "devDependencies": {
     "electron": "^31.0.0",
