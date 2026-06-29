@@ -17,6 +17,9 @@ standard macOS menu-bar icon.
   (`gh auth login --hostname <host>` if not already done)
 - **`claude`** CLI authenticated (`claude` must be on your PATH and signed in)
 - **Node.js >= 20** (required for the generation subprocess)
+- **pnpm 11** — the project's package manager (pinned via the `packageManager`
+  field in `package.json`; run `corepack enable` to use the exact pinned version,
+  or install pnpm yourself)
 
 ---
 

@@ -9,27 +9,27 @@ DATA := $$HOME/Library/Application Support/pr-autopilot
 ##@ Develop
 .PHONY: deps dev test typecheck
 deps: ## Install dependencies
-	@npm install
+	@pnpm install
 dev: ## Run the app with HMR
-	@npm run dev
+	@pnpm dev
 test: ## Run the vitest suite
-	@npm test
+	@pnpm test
 typecheck: ## Typecheck main + renderer
-	@npm run typecheck
+	@pnpm typecheck
 
 ##@ Build & package
 .PHONY: build dist clean
 build: ## Build main/preload/renderer
-	@npm run build
+	@pnpm build
 dist: ## Package the macOS .app
-	@npm run dist
+	@pnpm dist
 clean: ## Remove build outputs
 	@rm -rf out dist
 
 ##@ Install & run
 .PHONY: install open skills logs
 install: ## Build + package + copy app into /Applications (also applies skill edits)
-	@npm run dist && rm -rf "$(APP)" && cp -R "$$(ls -d dist/mac*/*.app | head -1)" /Applications/ && echo "installed -> $(APP) (first launch: right-click → Open)"
+	@pnpm dist && rm -rf "$(APP)" && cp -R "$$(ls -d dist/mac*/*.app | head -1)" /Applications/ && echo "installed -> $(APP) (first launch: right-click → Open)"
 open: ## Open the installed app
 	@open "$(APP)"
 skills: ## Open the bundled skills source (plugin/) for editing

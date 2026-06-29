@@ -1,0 +1,13 @@
+# pnpm 11 reads pnpm-specific settings from here (no longer from .npmrc or the
+# package.json "pnpm" field).
+
+# electron-builder can't follow pnpm's default symlinked node_modules when it
+# packages the .app, so use a flat (hoisted) layout.
+nodeLinker: hoisted
+
+# Allow the build (postinstall) scripts that fetch/set up native binaries.
+# electron downloads the Electron framework; esbuild installs its platform binary
+# (needed by vite/vitest/electron-vite). Without these, build/dist/test fail.
+allowBuilds:
+  electron: true
+  esbuild: true

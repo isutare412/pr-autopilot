@@ -127,6 +127,21 @@ and reinstall. See README.md for a worked example.
 
 ## Conventions
 
+### Package manager: pnpm
+
+The project uses **pnpm 11**, pinned via the `packageManager` field in
+`package.json` (Corepack) and an `engines.pnpm` floor. pnpm-specific settings live
+in `pnpm-workspace.yaml` (pnpm 11 no longer reads them from `.npmrc` or the
+package.json `pnpm` field):
+
+- `nodeLinker: hoisted` — a flat `node_modules`, because electron-builder can't
+  follow pnpm's default symlinked layout when packaging the `.app`.
+- `allowBuilds: { electron, esbuild }` — pnpm blocks dependency build scripts by
+  default; these two need theirs (electron downloads its framework, esbuild
+  installs its platform binary). Without them, `build`/`dist`/`test` fail.
+
+Commit `pnpm-lock.yaml`. The Makefile targets wrap pnpm (`make deps` → `pnpm install`).
+
 ### TDD with vitest
 
 All backend logic in `src/main/core/` is tested in `test/`. Run the suite with:
