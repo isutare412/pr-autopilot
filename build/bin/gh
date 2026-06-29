@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Read-only gh shim used ONLY by the generation subprocess (prepended to PATH).
+# Delegates the mutation decision to the single tested source of truth
+# (guard.mjs :: isMutatingGh, a parity-tested copy of src/main/core/guard.ts)
+# and FAILS CLOSED: if it cannot be evaluated,
+# the call is blocked. Reads pass through to the real gh.
+set -euo pipefail
+
+SHIM_DIR="$(cd "$(dirname "$0")" && pwd)"
+GUARD_JS="$SHIM_DIR/guard.mjs"
+
+rc=0
+node -e 'import(process.argv[1]).then(m=>process.exit(m.isMutatingGh(process.argv.slice(2))?10:0)).catch(()=>process.exit(20))' "$GUARD_JS" "$@" && rc=0 || rc=$?
+if [ "$rc" != 0 ]; then
+  echo "gh-shim: blocked (rc=$rc) mutating-or-unverifiable gh during read-only generation: gh $*" >&2
+  exit 97
+fi
+
+# Not mutating: find the real gh (skip this shim's dir) and exec it.
+REAL_GH=""
+IFS=':' read -ra PARTS <<< "$PATH"
+for d in "${PARTS[@]}"; do
+  if [ "$d" != "$SHIM_DIR" ] && [ -x "$d/gh" ]; then REAL_GH="$d/gh"; break; fi
+done
+[ -z "$REAL_GH" ] && { echo "gh-shim: real gh not found" >&2; exit 98; }
+exec "$REAL_GH" "$@"
