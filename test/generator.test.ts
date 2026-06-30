@@ -86,6 +86,18 @@ describe("generate", () => {
     const d = { ...deps(), spawner: spawnerWriting(() => "STILL NOT JSON") };
     await expect(generate(d, { url: "http://pr/65", language: "en", effort: "high" })).rejects.toThrow();
   });
+
+  // The read-only gh shim is applied to generation through its OWN env, not the
+  // main-process PATH — so the main process can route the executor's approved
+  // mutations to the real gh without the shim blocking them. Guard that here.
+  it("prepends shimDir to the spawner's PATH itself", async () => {
+    let seenPath = "";
+    const spawner: ClaudeSpawner = {
+      async run({ outFile, env }) { seenPath = env.PATH ?? ""; writeFileSync(outFile, JSON.stringify(validDraft)); },
+    };
+    await generate({ ...deps(), spawner }, { url: "http://pr/65", language: "en", effort: "high" });
+    expect(seenPath.split(":")[0]).toBe("/tmp/bin");
+  });
 });
 
 describe("resolveClaudeBin", () => {

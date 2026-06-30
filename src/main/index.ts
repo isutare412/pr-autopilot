@@ -24,8 +24,12 @@ app.whenReady().then(async () => {
     let settings = loadSettings(dataDir);
 
     // Set PATH before any gh spawn so packaged .app finds gh even with launchd's minimal PATH.
+    // NB: the read-only gh shim must NOT go on the main-process PATH — that would route the
+    // executor's user-approved mutations (postReview/postReply/resolve) through the shim and
+    // get them blocked (exit 97). The shim is applied only to the generation subprocess, by
+    // generator.ts prepending shimDir to its own env. Here we expose just the real gh.
     const shimDir = join(getPluginDir(), "..", "build", "bin");
-    process.env.PATH = `${shimDir}:${resolvePath()}`;
+    process.env.PATH = resolvePath();
 
     const store = new Store(dataDir);
     const gh = new Gh(realGhRunner(), settings.githubHost);
