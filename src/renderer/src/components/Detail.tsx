@@ -9,7 +9,7 @@ interface DetailProps {
   record: UiRecord | null;
   onToggle: (ref: string, included: boolean) => void;
   onEdit: (ref: string, body: string) => void;
-  onApprove: () => void;
+  onApprove: (verdict: "approve" | "comment") => void;
   onDismiss: () => void;
   onRestore: () => void;
   onDelete: () => void;
@@ -114,8 +114,10 @@ export function Detail({ record, onToggle, onEdit, onApprove, onDismiss, onResto
         <FindingCard key={f.ref} f={f} onToggle={onToggle} onEdit={onEdit} />
       ))}
       <ActionsBar
+        key={record.key}
         draft={draft}
         state={record.state}
+        postVerdict={record.postVerdict}
         onApprove={onApprove}
         onDismiss={onDismiss}
         onRestore={onRestore}

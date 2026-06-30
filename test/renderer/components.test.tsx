@@ -50,11 +50,22 @@ describe("ActionsBar", () => {
   const draft = { overallEn: "", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
   const props = { draft, onApprove: vi.fn(), onDismiss: vi.fn(), onRestore: vi.fn(), onDelete: vi.fn(), onFeedback: vi.fn() };
 
-  it("enables Approve only for NEEDS_REVIEW", () => {
+  it("shows the Post control for NEEDS_REVIEW and hides it once posted", () => {
     const { rerender } = render(<ActionsBar {...props} state="NEEDS_REVIEW" />);
-    expect(screen.getByText(/Approve/).closest("button")).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: /post/i })).toBeInTheDocument();
     rerender(<ActionsBar {...props} state="DONE" />);
-    expect(screen.getByText(/Approve/).closest("button")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /post/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/already done/i)).toBeInTheDocument();
+  });
+
+  it("posts with the chosen verdict (clean draft defaults to approve)", () => {
+    const onApprove = vi.fn();
+    render(<ActionsBar {...props} onApprove={onApprove} state="NEEDS_REVIEW" />);
+    fireEvent.click(screen.getByRole("button", { name: /post/i }));
+    expect(onApprove).toHaveBeenCalledWith("approve");
+    fireEvent.click(screen.getByRole("radio", { name: /comment/i }));
+    fireEvent.click(screen.getByRole("button", { name: /post/i }));
+    expect(onApprove).toHaveBeenLastCalledWith("comment");
   });
 
   it("shows Dismiss for an active record and Restore for a dismissed one", () => {

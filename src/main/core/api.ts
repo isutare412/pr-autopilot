@@ -1,5 +1,5 @@
 import { Store } from "./store";
-import { PrRecord } from "./schema";
+import { PrRecord, PostVerdict } from "./schema";
 
 export interface ApiDeps {
   store: Store;
@@ -62,9 +62,10 @@ export const api = {
     return { ok: true };
   },
 
-  approve(deps: ApiDeps, key: string): { ok: true } | Err {
+  approve(deps: ApiDeps, key: string, verdict: PostVerdict): { ok: true } | Err {
     const rec = deps.store.get(key);
     if (!rec) return NF;
+    rec.postVerdict = PostVerdict.parse(verdict);   // disposition the executor reads back
     rec.state = "POSTING";
     rec.updatedAt = deps.nowIso();
     deps.store.put(rec);

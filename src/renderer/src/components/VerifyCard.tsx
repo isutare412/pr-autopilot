@@ -1,4 +1,5 @@
 import { UiVerify } from "../types";
+import { AutoTextarea } from "./AutoTextarea";
 
 interface VerifyCardProps {
   v: UiVerify;
@@ -36,7 +37,7 @@ export function VerifyCard({ v, onToggle, onEdit }: VerifyCardProps) {
         className="why"
         dangerouslySetInnerHTML={{ __html: mdLite(v.rationaleEn ?? "") }}
       />
-      <textarea
+      <AutoTextarea
         className="edit"
         data-ref={v.ref}
         value={body}

@@ -1,4 +1,5 @@
 import { UiFinding } from "../types";
+import { AutoTextarea } from "./AutoTextarea";
 
 interface FindingCardProps {
   f: UiFinding;
@@ -26,7 +27,7 @@ export function FindingCard({ f, onToggle, onEdit }: FindingCardProps) {
           {toggle} {f.included ? "include" : "dropped"}
         </button>
       </div>
-      <textarea
+      <AutoTextarea
         className="edit"
         data-ref={f.ref}
         value={body}

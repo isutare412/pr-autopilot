@@ -1,14 +1,30 @@
 import { Gh } from "./gh";
-import { PrRecord, PostProgress } from "./schema";
+import { Draft, PrRecord, PostProgress, PostVerdict } from "./schema";
 
-export function buildReviewPayload(rec: PrRecord, headSha: string) {
+/** Default disposition when the user didn't pick one (automated mode, or a
+ *  resumed post from before verdicts existed): "comment" (and re-queue) whenever
+ *  there's anything still open, else a clean "approve". */
+export function defaultVerdict(draft: Draft): PostVerdict {
+  const hasFindings = draft.findings.some((f) => f.included);
+  const hasOpenThreads = draft.verify.some((v) => v.included && v.verdict !== "resolve");
+  return hasFindings || hasOpenThreads ? "comment" : "approve";
+}
+
+/** Build the batched review submission, or null when there's no review to post
+ *  (a "comment" disposition with no new findings — the substance is the
+ *  replies/resolves, so an empty COMMENT review would just be noise). */
+export function buildReviewPayload(
+  rec: PrRecord, headSha: string, verdict: PostVerdict = defaultVerdict(rec.draft!),
+) {
   const draft = rec.draft!;
   const included = draft.findings.filter((f) => f.included);
   const anchorable = included.filter((f) => f.anchorable);
   const unanchorable = included.filter((f) => !f.anchorable);
 
   if (included.length === 0) {
-    return { event: "APPROVE", body: "LGTM :+1:", commit_id: headSha };
+    return verdict === "approve"
+      ? { event: "APPROVE", body: "LGTM :+1:", commit_id: headSha }
+      : null;
   }
 
   const comments = anchorable.map((f) => {
@@ -20,7 +36,8 @@ export function buildReviewPayload(rec: PrRecord, headSha: string) {
   const body = unanchorable.length === 0 ? "" :
     unanchorable.map((f) => `${f.path}:${f.line} — ${f.editedBody ?? f.body}`).join("\n\n");
 
-  return { event: "COMMENT", body, commit_id: headSha, comments };
+  // Approving with comments attaches the nits to an APPROVE; otherwise it's a neutral COMMENT.
+  return { event: verdict === "approve" ? "APPROVE" : "COMMENT", body, commit_id: headSha, comments };
 }
 
 export async function execute(
@@ -34,6 +51,7 @@ export async function execute(
   }
 
   const draft = rec.draft!;
+  const verdict = rec.postVerdict ?? defaultVerdict(draft);
   const progress = rec.postProgress ?? { repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false };
   const save = () => onProgress?.(progress);  // persist after each action → crash-safe resume
   const resolvedThreadIds: string[] = [...progress.threadsResolved.map((id) => draft.verify.find((v) => v.id === id)?.threadNodeId).filter(Boolean) as string[]];
@@ -57,23 +75,22 @@ export async function execute(
     save();
   }
 
-  // 3. Batched review for new findings (or LGTM approve).
+  // 3. Batched review (APPROVE or COMMENT per the verdict). May be a no-op when
+  //    the verdict is "comment" and there are no new findings to attach.
   let reviewUrl: string | null = rec.postResult?.reviewUrl ?? null;
   if (!progress.reviewPosted) {
-    const payload = buildReviewPayload(rec, liveSha);
-    const res = await gh.postReview(rec.owner, rec.repo, rec.number, payload);
-    reviewUrl = res.html_url;
-    progress.reviewPosted = true;
+    const payload = buildReviewPayload(rec, liveSha, verdict);
+    if (payload) {
+      const res = await gh.postReview(rec.owner, rec.repo, rec.number, payload);
+      reviewUrl = res.html_url;
+    }
+    progress.reviewPosted = true;   // mark done even when skipped, so resume doesn't retry
     save();
   }
 
-  // Determine whether findings remain (drives re-request + terminal state).
-  const hasFindings = draft.findings.some((f) => f.included);
-  const hasOpenThreads = draft.verify.some((v) => v.included && v.verdict !== "resolve");
-  const findingsRemain = hasFindings || hasOpenThreads;
-
-  // 4. Re-request self when findings remain.
-  if (findingsRemain && !progress.reviewerRequested) {
+  // 4. Re-request self only when the verdict says "comment" — i.e. you're coming
+  //    back to verify the author's response. An "approve" means you're finished.
+  if (verdict === "comment" && !progress.reviewerRequested) {
     try {
       await gh.requestReviewer(rec.owner, rec.repo, rec.number, login);
     } catch { /* self-only; ignore (e.g. user is the author) */ }
@@ -81,7 +98,7 @@ export async function execute(
     save();
   }
 
-  const state = findingsRemain ? "POSTED_AWAITING_AUTHOR" : "DONE";
+  const state = verdict === "comment" ? "POSTED_AWAITING_AUTHOR" : "DONE";
   return {
     ...rec,
     state,

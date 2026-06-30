@@ -19,6 +19,12 @@ export type Verdict = z.infer<typeof Verdict>;
 export const Mode = z.enum(["first-review", "re-review"]);
 export type Mode = z.infer<typeof Mode>;
 
+/** The reviewer's posting disposition, chosen at post time:
+ *  - "approve"  → submit an APPROVE review (with any nit comments), don't re-queue, mark DONE.
+ *  - "comment"  → submit a COMMENT review (or just replies/resolves), re-request self, await author. */
+export const PostVerdict = z.enum(["approve", "comment"]);
+export type PostVerdict = z.infer<typeof PostVerdict>;
+
 export const OperatingMode = z.enum(["disabled", "supervised", "automated"]);
 export type OperatingMode = z.infer<typeof OperatingMode>;
 
@@ -119,6 +125,7 @@ export const PrRecord = z.object({
   feedbackHistory: z.array(FeedbackEntry),
   postResult: PostResult.nullable(),
   postProgress: PostProgress.nullable(),
+  postVerdict: PostVerdict.optional(),   // disposition chosen at approve time; absent → derive from draft
   error: z.object({ step: z.string(), message: z.string() }).nullable(),
   genActivity: z.array(z.string()).optional(), // live "what CC is doing" feed, present only while GENERATING
   discoveredAt: z.string(),

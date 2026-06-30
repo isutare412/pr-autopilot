@@ -236,10 +236,10 @@ export function App() {
               if (!selectedKeyRef.current) return;
               await api.edit(selectedKeyRef.current, ref, body);
             }}
-            onApprove={async () => {
+            onApprove={async (verdict) => {
               if (!selectedKeyRef.current) return;
               const key = selectedKeyRef.current;
-              await api.approve(key);
+              await api.approve(key, verdict);
               await loadList();
               await loadDetail(key);
             }}

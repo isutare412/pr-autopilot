@@ -119,8 +119,15 @@ body {
   background: transparent;
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 5px 8px;
+  /* Custom chevron (native one floats to the far edge, leaving a wide gap); tuck
+     it 8px from the edge with the value sitting just left of it. */
+  padding: 5px 20px 5px 10px;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%2379838f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
 }
 .interval-select:hover {
   color: var(--fg);
@@ -846,9 +853,10 @@ body {
 
 .edit {
   width: 100%;
-  min-height: 62px;
+  min-height: 38px;       /* one line floor; AutoTextarea grows it to fit content */
   margin-top: 9px;
-  resize: vertical;
+  resize: none;
+  overflow: hidden;
   background: var(--bg);
   color: var(--fg);
   border: 1px solid var(--line);
@@ -882,6 +890,40 @@ body {
   flex-wrap: wrap;
 }
 
+/* Verdict toggle: a two-segment pill; the lit segment is tinted to its meaning
+   (approve = green, comment = teal) so the choice reads at a glance. */
+.verdict {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.verdict-opt {
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 13px;
+  font: 600 12px var(--ui);
+  cursor: pointer;
+}
+
+.verdict-opt:hover {
+  color: var(--fg);
+}
+
+.verdict-opt--approve.is-on {
+  background: rgba(63, 178, 127, 0.18);
+  color: var(--ok);
+}
+
+.verdict-opt--comment.is-on {
+  background: rgba(70, 198, 192, 0.16);
+  color: var(--accent);
+}
+
 #approve {
   background: var(--ok);
   color: #04130c;
@@ -890,6 +932,12 @@ body {
   padding: 9px 16px;
   font: 600 13px var(--ui);
   cursor: pointer;
+}
+
+/* Post button tracks the verdict — green when it will approve, teal when it's a
+   neutral comment — so the action colour never implies an approval you didn't pick. */
+#approve.comment {
+  background: var(--accent);
 }
 
 #approve:hover {
@@ -955,6 +1003,11 @@ body {
 .summary::before {
   content: "\25B8  ";
   color: var(--accent);
+}
+
+.summary--error,
+.summary--error::before {
+  color: var(--crit);
 }
 
 /* ---- Feedback row ---- */

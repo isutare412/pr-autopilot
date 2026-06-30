@@ -58,6 +58,7 @@ export interface UiRecord {
   feedbackHistory: Array<{ at: string; text: string; producedVersion: number }>;
   postResult: { reviewUrl: string | null; postedAt: string; resolvedThreadIds: string[] } | null;
   postProgress: { repliesPosted: string[]; threadsResolved: string[]; reviewPosted: boolean; reviewerRequested: boolean } | null;
+  postVerdict?: "approve" | "comment";
   error: { step: string; message: string } | null;
   genActivity?: string[];
   discoveredAt: string;

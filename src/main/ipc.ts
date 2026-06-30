@@ -24,7 +24,7 @@ export function registerIpc(d: IpcDeps): void {
   ipcMain.handle("pr:toggle", (_e, key: string, ref: string, included: boolean) => api.toggleItem(apiDeps, key, ref, included));
   ipcMain.handle("pr:edit", (_e, key: string, ref: string, editedBody: string | null) => api.editItem(apiDeps, key, ref, editedBody));
   ipcMain.handle("pr:feedback", (_e, key: string, text: string) => api.submitFeedback(apiDeps, key, text));
-  ipcMain.handle("pr:approve", (_e, key: string) => api.approve(apiDeps, key));
+  ipcMain.handle("pr:approve", (_e, key: string, verdict: "approve" | "comment") => api.approve(apiDeps, key, verdict));
   ipcMain.handle("pr:dismiss", (_e, key: string) => api.dismiss(apiDeps, key));
   ipcMain.handle("pr:restore", (_e, key: string) => api.restore(apiDeps, key));
   ipcMain.handle("pr:delete", (_e, key: string) => api.delete(apiDeps, key));

@@ -39,25 +39,25 @@ function ghWith(headSha: string): { gh: Gh; rec: Recorder } {
 
 describe("buildReviewPayload", () => {
   it("includes only included findings, COMMENT event, empty body", () => {
-    const p = buildReviewPayload(baseRec(), "SHA1");
+    const p = buildReviewPayload(baseRec(), "SHA1") as any;
     expect(p.event).toBe("COMMENT");
     expect(p.body).toBe("");
     expect(p.commit_id).toBe("SHA1");
-    expect(p.comments!.length).toBe(1);
-    expect(p.comments![0].path).toBe("a.go");
+    expect(p.comments.length).toBe(1);
+    expect(p.comments[0].path).toBe("a.go");
   });
 
   it("uses editedBody over body", () => {
     const r = baseRec();
     r.draft!.findings[0].editedBody = "**[Critical]** edited";
-    expect(buildReviewPayload(r, "SHA1").comments![0].body).toBe("**[Critical]** edited");
+    expect((buildReviewPayload(r, "SHA1") as any).comments[0].body).toBe("**[Critical]** edited");
   });
 
   it("folds unanchorable findings into the body", () => {
     const r = baseRec();
     r.draft!.findings[0].anchorable = false;
-    const p = buildReviewPayload(r, "SHA1");
-    expect(p.comments!.length).toBe(0);
+    const p = buildReviewPayload(r, "SHA1") as any;
+    expect(p.comments.length).toBe(0);
     expect(p.body).toContain("a.go");
     expect(p.body).toContain("leak");
   });
@@ -66,18 +66,30 @@ describe("buildReviewPayload", () => {
     const r = baseRec();
     r.draft!.findings[0].startLine = 10;
     r.draft!.findings[0].startSide = "RIGHT";
-    const p = buildReviewPayload(r, "SHA1");
-    expect(p.comments![0].start_line).toBe(10);
-    expect(p.comments![0].start_side).toBe("RIGHT");
+    const p = buildReviewPayload(r, "SHA1") as any;
+    expect(p.comments[0].start_line).toBe(10);
+    expect(p.comments[0].start_side).toBe("RIGHT");
   });
 
   it("emits APPROVE + LGTM when there are zero findings", () => {
     const r = baseRec();
     r.draft = { overallEn: "clean", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
-    const p = buildReviewPayload(r, "SHA1");
+    const p = buildReviewPayload(r, "SHA1") as any;
     expect(p.event).toBe("APPROVE");
     expect(p.body).toBe("LGTM :+1:");
     expect(p.comments).toBeUndefined();
+  });
+
+  it("approve verdict with findings → APPROVE that still carries the comments", () => {
+    const p = buildReviewPayload(baseRec(), "SHA1", "approve") as any;
+    expect(p.event).toBe("APPROVE");
+    expect(p.comments.length).toBe(1);
+  });
+
+  it("comment verdict with zero findings → null (nothing to post; replies/resolves carry it)", () => {
+    const r = baseRec();
+    r.draft = { overallEn: "re-review", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
+    expect(buildReviewPayload(r, "SHA1", "comment")).toBeNull();
   });
 });
 
@@ -88,6 +100,30 @@ describe("execute", () => {
     expect(out.state).toBe("POSTED_AWAITING_AUTHOR");
     expect(out.postResult?.reviewUrl).toBe("http://x/r/1");
     expect(rec.calls.some((c) => c.args.includes("/repos/O/R/pulls/65/requested_reviewers"))).toBe(true);
+  });
+
+  it("approve verdict: posts an APPROVE review, no re-request, DONE", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const out = await execute(gh, baseRec({ postVerdict: "approve" }), "me", "2026-06-29T00:00:00Z");
+    const review = rec.calls.find((c) => c.args.some((a) => a.includes("/reviews")));
+    expect(JSON.parse(review!.input!).event).toBe("APPROVE");
+    expect(rec.calls.some((c) => c.args.includes("/repos/O/R/pulls/65/requested_reviewers"))).toBe(false);
+    expect(out.state).toBe("DONE");
+  });
+
+  it("comment verdict with no new findings (re-review): no review call, re-requests, awaits author", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const r = baseRec({ mode: "re-review", postVerdict: "comment" });
+    r.draft = { overallEn: "re-review", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [],
+      verify: [
+        { id: "v1", ref: "V1", threadNodeId: "N1", replyTargetDatabaseId: 111, path: "a.go", line: 1,
+          verdict: "resolve", rationaleEn: "fixed", replyBody: "확인했습니다.", included: true, editedBody: null },
+      ] };
+    const out = await execute(gh, r, "me", "2026-06-29T00:00:00Z");
+    expect(rec.calls.some((c) => c.args.some((a) => a.includes("/reviews")))).toBe(false);
+    expect(rec.calls.some((c) => c.args.includes("/repos/O/R/pulls/65/requested_reviewers"))).toBe(true);
+    expect(out.state).toBe("POSTED_AWAITING_AUTHOR");
+    expect(out.postResult?.resolvedThreadIds).toEqual(["N1"]);
   });
 
   it("transitions to STALE without posting when head SHA moved", async () => {

@@ -76,11 +76,13 @@ describe("api", () => {
     expect(deps.store.get("git.linecorp.com/O/R#65")!.feedbackHistory[0].text).toBe("drop #1");
   });
 
-  it("approve sets POSTING and enqueues post", () => {
+  it("approve sets POSTING, records the verdict, and enqueues post", () => {
     const { deps, posts } = mkDeps();
-    api.approve(deps, "git.linecorp.com/O/R#65");
+    api.approve(deps, "git.linecorp.com/O/R#65", "comment");
     expect(posts).toEqual(["git.linecorp.com/O/R#65"]);
-    expect(deps.store.get("git.linecorp.com/O/R#65")!.state).toBe("POSTING");
+    const rec = deps.store.get("git.linecorp.com/O/R#65")!;
+    expect(rec.state).toBe("POSTING");
+    expect(rec.postVerdict).toBe("comment");
   });
 
   it("dismiss sets DISMISSED", () => {
@@ -97,7 +99,7 @@ describe("api", () => {
 
   it("approve returns not-found error for unknown key and does not enqueue", () => {
     const { deps, posts } = mkDeps();
-    const out = api.approve(deps, "git.linecorp.com/O/R#999");
+    const out = api.approve(deps, "git.linecorp.com/O/R#999", "approve");
     expect(out).toEqual({ error: "not found" });
     expect(posts).toEqual([]);
   });

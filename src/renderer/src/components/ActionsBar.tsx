@@ -2,34 +2,51 @@ import { useState } from "react";
 import { UiDraft } from "../types";
 import { DeleteButton } from "./DeleteButton";
 
+type Verdict = "approve" | "comment";
+
 interface ActionsBarProps {
   draft: UiDraft;
   state: string;
-  onApprove: () => void;
+  postVerdict?: Verdict;
+  onApprove: (verdict: Verdict) => void;
   onDismiss: () => void;
   onRestore: () => void;
   onDelete: () => void;
   onFeedback: (text: string) => void;
 }
 
-function actionSummary(draft: UiDraft): string {
-  const newComments = draft.findings.filter((f) => f.included).length;
+/** The default disposition: "comment" (and re-queue yourself) whenever anything
+ *  is still open, else a clean "approve". Mirrors executor.defaultVerdict. */
+function defaultVerdict(draft: UiDraft): Verdict {
+  const hasFindings = draft.findings.some((f) => f.included);
+  const hasOpenThreads = draft.verify.some((v) => v.included && v.verdict !== "resolve");
+  return hasFindings || hasOpenThreads ? "comment" : "approve";
+}
+
+/** A one-line read-out of what Post will do, ending in the consequence so the
+ *  disposition's effect is never a surprise. */
+function postSummary(draft: UiDraft, verdict: Verdict): string {
+  const comments = draft.findings.filter((f) => f.included).length;
   const resolves = draft.verify.filter((v) => v.included && v.verdict === "resolve").length;
   const followups = draft.verify.filter((v) => v.included && v.verdict === "follow-up").length;
   const parts: string[] = [];
-  if (followups) parts.push(`${followups} follow-up reply${followups > 1 ? "s" : ""}`);
+  if (comments) parts.push(`${comments} comment${comments > 1 ? "s" : ""}`);
+  if (followups) parts.push(`${followups} repl${followups > 1 ? "ies" : "y"}`);
   if (resolves) parts.push(`resolve ${resolves} thread${resolves > 1 ? "s" : ""}`);
-  if (newComments === 0 && resolves === 0 && followups === 0) return "approve LGTM";
-  parts.push(newComments === 0 ? "no new comments" : `${newComments} new comment${newComments > 1 ? "s" : ""}`);
-  return parts.join(" · ");
+  const content = parts.length ? parts.join(" · ") : verdict === "approve" ? "LGTM" : "replies only";
+  return `${content} · ${verdict === "comment" ? "re-requests you" : "approves, done"}`;
 }
 
-export function ActionsBar({ draft, state, onApprove, onDismiss, onRestore, onDelete, onFeedback }: ActionsBarProps) {
+export function ActionsBar({ draft, state, postVerdict, onApprove, onDismiss, onRestore, onDelete, onFeedback }: ActionsBarProps) {
   const [feedbackText, setFeedbackText] = useState("");
-  const canApprove = state === "NEEDS_REVIEW";
+  const [verdict, setVerdict] = useState<Verdict>(postVerdict ?? defaultVerdict(draft));
+
+  // A post that failed lands in ERROR with its draft intact; let the user retry
+  // from here — the post path resumes and skips already-sent items.
+  const isError = state === "ERROR";
+  const canPost = state === "NEEDS_REVIEW" || isError;
   const hidden = state === "DISMISSED";
   const pretty = state.toLowerCase().replace(/_/g, " ");
-  const summary = canApprove ? actionSummary(draft) : `already ${pretty}`;
 
   function handleSend() {
     onFeedback(feedbackText);
@@ -38,15 +55,38 @@ export function ActionsBar({ draft, state, onApprove, onDismiss, onRestore, onDe
 
   return (
     <div className="actions">
-      <button
-        id="approve"
-        onClick={onApprove}
-        disabled={!canApprove}
-        title={canApprove ? undefined : `Already ${pretty} — nothing to post`}
-      >
-        Approve &amp; post →
-      </button>
-      <span className="summary">{summary}</span>
+      {canPost ? (
+        <>
+          <div className="verdict" role="radiogroup" aria-label="Review verdict">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={verdict === "approve"}
+              className={`verdict-opt verdict-opt--approve${verdict === "approve" ? " is-on" : ""}`}
+              onClick={() => setVerdict("approve")}
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={verdict === "comment"}
+              className={`verdict-opt verdict-opt--comment${verdict === "comment" ? " is-on" : ""}`}
+              onClick={() => setVerdict("comment")}
+            >
+              Comment
+            </button>
+          </div>
+          <button id="approve" className={verdict} onClick={() => onApprove(verdict)}>
+            {isError ? "Retry post →" : "Post →"}
+          </button>
+          <span className={`summary${isError ? " summary--error" : ""}`}>
+            {isError ? "last post didn’t finish — retry to send the rest" : postSummary(draft, verdict)}
+          </span>
+        </>
+      ) : (
+        <span className="summary">already {pretty}</span>
+      )}
       {hidden ? (
         <button type="button" className="del-btn" onClick={onRestore}>Restore</button>
       ) : (
