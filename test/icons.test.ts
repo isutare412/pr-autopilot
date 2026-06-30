@@ -28,4 +28,13 @@ describe("icon assets", () => {
     expect([p.width, p.height]).toEqual([1024, 1024]);
     expect(p.colorType).toBe(6);
   });
+
+  it("package.json wires the mac icon and bundles the @2x tray template", () => {
+    const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+    expect(pkg.build.mac.icon).toBe("build/icon.png");
+    expect(pkg.build.extraResources).toContainEqual({
+      from: "build/trayTemplate@2x.png",
+      to: "build/trayTemplate@2x.png",
+    });
+  });
 });

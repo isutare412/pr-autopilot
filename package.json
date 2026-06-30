@@ -21,9 +21,11 @@
       { "from": "plugin", "to": "plugin" },
       { "from": "build/guard.settings.json", "to": "build/guard.settings.json" },
       { "from": "build/bin", "to": "build/bin" },
-      { "from": "build/trayTemplate.png", "to": "build/trayTemplate.png" }
+      { "from": "build/trayTemplate.png", "to": "build/trayTemplate.png" },
+      { "from": "build/trayTemplate@2x.png", "to": "build/trayTemplate@2x.png" }
     ],
     "mac": {
+      "icon": "build/icon.png",
       "target": "dir",
       "category": "public.app-category.developer-tools",
       "extendInfo": { "LSUIElement": true },
