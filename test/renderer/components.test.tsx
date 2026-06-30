@@ -47,11 +47,21 @@ describe("FindingCard", () => {
 });
 
 describe("ActionsBar", () => {
+  const draft = { overallEn: "", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
+  const props = { draft, onApprove: vi.fn(), onDismiss: vi.fn(), onRestore: vi.fn(), onDelete: vi.fn(), onFeedback: vi.fn() };
+
   it("enables Approve only for NEEDS_REVIEW", () => {
-    const { rerender } = render(<ActionsBar draft={{ overallEn: "", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] }} state="NEEDS_REVIEW" onApprove={vi.fn()} onDelete={vi.fn()} onFeedback={vi.fn()} />);
+    const { rerender } = render(<ActionsBar {...props} state="NEEDS_REVIEW" />);
     expect(screen.getByText(/Approve/).closest("button")).not.toBeDisabled();
-    rerender(<ActionsBar draft={{ overallEn: "", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] }} state="DONE" onApprove={vi.fn()} onDelete={vi.fn()} onFeedback={vi.fn()} />);
+    rerender(<ActionsBar {...props} state="DONE" />);
     expect(screen.getByText(/Approve/).closest("button")).toBeDisabled();
+  });
+
+  it("shows Dismiss for an active record and Restore for a dismissed one", () => {
+    const { rerender } = render(<ActionsBar {...props} state="NEEDS_REVIEW" />);
+    expect(screen.getByRole("button", { name: /^dismiss$/i })).toBeInTheDocument();
+    rerender(<ActionsBar {...props} state="DISMISSED" />);
+    expect(screen.getByRole("button", { name: /^restore$/i })).toBeInTheDocument();
   });
 });
 
@@ -79,7 +89,7 @@ describe("Detail empty state", () => {
   const noop = () => {};
   it("shows the branded placeholder when no record is selected", () => {
     render(
-      <Detail record={null} onToggle={noop} onEdit={noop} onApprove={noop} onDelete={noop} onFeedback={noop} />,
+      <Detail record={null} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
     );
     expect(screen.getByText("Select a PR to review")).toBeInTheDocument();
     expect(screen.getByText(/Pick a pull request from the queue/)).toBeInTheDocument();

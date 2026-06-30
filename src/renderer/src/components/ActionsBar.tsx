@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { UiDraft } from "../types";
+import { DeleteButton } from "./DeleteButton";
 
 interface ActionsBarProps {
   draft: UiDraft;
   state: string;
   onApprove: () => void;
+  onDismiss: () => void;
+  onRestore: () => void;
   onDelete: () => void;
   onFeedback: (text: string) => void;
 }
@@ -21,9 +24,10 @@ function actionSummary(draft: UiDraft): string {
   return parts.join(" · ");
 }
 
-export function ActionsBar({ draft, state, onApprove, onDelete, onFeedback }: ActionsBarProps) {
+export function ActionsBar({ draft, state, onApprove, onDismiss, onRestore, onDelete, onFeedback }: ActionsBarProps) {
   const [feedbackText, setFeedbackText] = useState("");
   const canApprove = state === "NEEDS_REVIEW";
+  const hidden = state === "DISMISSED";
   const pretty = state.toLowerCase().replace(/_/g, " ");
   const summary = canApprove ? actionSummary(draft) : `already ${pretty}`;
 
@@ -43,9 +47,12 @@ export function ActionsBar({ draft, state, onApprove, onDelete, onFeedback }: Ac
         Approve &amp; post →
       </button>
       <span className="summary">{summary}</span>
-      <button id="delete" className="del-btn" onClick={onDelete}>
-        Delete
-      </button>
+      {hidden ? (
+        <button type="button" className="del-btn" onClick={onRestore}>Restore</button>
+      ) : (
+        <button type="button" className="del-btn" onClick={onDismiss}>Dismiss</button>
+      )}
+      <DeleteButton onDelete={onDelete} />
       <div className="fb">
         <textarea
           id="feedback"

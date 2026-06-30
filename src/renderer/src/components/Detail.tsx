@@ -3,12 +3,15 @@ import { GeneratingPane } from "./GeneratingPane";
 import { FindingCard } from "./FindingCard";
 import { VerifyCard } from "./VerifyCard";
 import { ActionsBar } from "./ActionsBar";
+import { DeleteButton } from "./DeleteButton";
 
 interface DetailProps {
   record: UiRecord | null;
   onToggle: (ref: string, included: boolean) => void;
   onEdit: (ref: string, body: string) => void;
   onApprove: () => void;
+  onDismiss: () => void;
+  onRestore: () => void;
   onDelete: () => void;
   onFeedback: (text: string) => void;
 }
@@ -34,7 +37,7 @@ function PrHead({ number, title }: { number: number; title: string }) {
   );
 }
 
-export function Detail({ record, onToggle, onEdit, onApprove, onDelete, onFeedback }: DetailProps) {
+export function Detail({ record, onToggle, onEdit, onApprove, onDismiss, onRestore, onDelete, onFeedback }: DetailProps) {
   if (!record) {
     return (
       <div className="detail-empty">
@@ -73,9 +76,14 @@ export function Detail({ record, onToggle, onEdit, onApprove, onDelete, onFeedba
               {record.state} · {e.step}
             </div>
             <pre className="error-msg">{e.message}</pre>
-            <button className="del-btn" onClick={onDelete} style={{ marginTop: 14 }}>
-              Delete
-            </button>
+            <div className="actions-inline">
+              {record.state === "DISMISSED" ? (
+                <button type="button" className="del-btn" onClick={onRestore}>Restore</button>
+              ) : (
+                <button type="button" className="del-btn" onClick={onDismiss}>Dismiss</button>
+              )}
+              <DeleteButton onDelete={onDelete} />
+            </div>
           </div>
         ) : (
           <div className="empty">{record.state}</div>
@@ -109,6 +117,8 @@ export function Detail({ record, onToggle, onEdit, onApprove, onDelete, onFeedba
         draft={draft}
         state={record.state}
         onApprove={onApprove}
+        onDismiss={onDismiss}
+        onRestore={onRestore}
         onDelete={onDelete}
         onFeedback={onFeedback}
       />

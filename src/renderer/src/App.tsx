@@ -48,6 +48,16 @@ export function App() {
     if (key === selectedKeyRef.current) await loadDetail(key);
   }
 
+  async function del(key: string) {
+    await api.delete(key);
+    if (key === selectedKeyRef.current) {
+      setRecord(null);
+      setSelectedKey(null);
+      selectedKeyRef.current = null;
+    }
+    await loadList();
+  }
+
   async function pollNow() {
     if (polling) return;
     setPolling(true);
@@ -123,9 +133,17 @@ export function App() {
               await loadList();
               await loadDetail(key);
             }}
-            onDelete={async () => {
+            onDismiss={async () => {
               if (!selectedKeyRef.current) return;
               await dismiss(selectedKeyRef.current);
+            }}
+            onRestore={async () => {
+              if (!selectedKeyRef.current) return;
+              await restore(selectedKeyRef.current);
+            }}
+            onDelete={async () => {
+              if (!selectedKeyRef.current) return;
+              await del(selectedKeyRef.current);
             }}
             onFeedback={async (text) => {
               if (!selectedKeyRef.current) return;

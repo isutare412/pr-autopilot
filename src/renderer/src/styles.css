@@ -754,6 +754,13 @@ body {
   border-color: var(--crit);
 }
 
+.actions-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
 .summary {
   font: 12px/1.4 var(--mono);
   color: var(--accent);
