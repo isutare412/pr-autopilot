@@ -22,6 +22,8 @@ export function registerIpc(d: IpcDeps): void {
   ipcMain.handle("pr:feedback", (_e, key: string, text: string) => api.submitFeedback(apiDeps, key, text));
   ipcMain.handle("pr:approve", (_e, key: string) => api.approve(apiDeps, key));
   ipcMain.handle("pr:dismiss", (_e, key: string) => api.dismiss(apiDeps, key));
+  ipcMain.handle("pr:restore", (_e, key: string) => api.restore(apiDeps, key));
+  ipcMain.handle("pr:delete", (_e, key: string) => api.delete(apiDeps, key));
   ipcMain.handle("app:pollNow", () => d.orch.runPoll());
   ipcMain.handle("settings:get", () => d.getSettings());
   ipcMain.handle("settings:set", (_e, s: Settings) => { d.setSettings(s); return d.getSettings(); });

@@ -82,4 +82,29 @@ export const api = {
     deps.store.put(rec);
     return rec;
   },
+
+  restore(deps: ApiDeps, key: string): PrRecord | Err {
+    const rec = deps.store.get(key);
+    if (!rec) return NF;
+    const regenerate = !rec.postResult && !rec.draft && !rec.error;
+    rec.state = rec.postResult
+      ? "POSTED_AWAITING_AUTHOR"
+      : rec.draft
+        ? "NEEDS_REVIEW"
+        : rec.error
+          ? "ERROR"
+          : "GENERATING";
+    rec.doneAt = null;
+    rec.updatedAt = deps.nowIso();
+    deps.store.put(rec);
+    if (regenerate) deps.enqueueGen(key);
+    return rec;
+  },
+
+  delete(deps: ApiDeps, key: string): { ok: true } | Err {
+    const rec = deps.store.get(key);
+    if (!rec) return NF;
+    deps.store.delete(key);
+    return { ok: true };
+  },
 };

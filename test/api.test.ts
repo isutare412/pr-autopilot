@@ -102,6 +102,51 @@ describe("api", () => {
     expect(posts).toEqual([]);
   });
 
+  it("restore returns a draft record to NEEDS_REVIEW and clears doneAt", () => {
+    const { deps } = mkDeps();
+    api.dismiss(deps, "git.linecorp.com/O/R#65");
+    const out = api.restore(deps, "git.linecorp.com/O/R#65") as PrRecord;
+    expect(out.state).toBe("NEEDS_REVIEW");
+    expect(out.doneAt).toBeNull();
+  });
+
+  it("restore derives POSTED_AWAITING_AUTHOR when a postResult exists", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("git.linecorp.com/O/R#65")!;
+    rec.postResult = { reviewUrl: "u", postedAt: "t", resolvedThreadIds: [] };
+    rec.state = "DISMISSED";
+    deps.store.put(rec);
+    const out = api.restore(deps, "git.linecorp.com/O/R#65") as PrRecord;
+    expect(out.state).toBe("POSTED_AWAITING_AUTHOR");
+  });
+
+  it("restore regenerates when there is no draft, postResult, or error", () => {
+    const { deps, gens } = mkDeps();
+    const rec = deps.store.get("git.linecorp.com/O/R#65")!;
+    rec.draft = null;
+    rec.state = "DISMISSED";
+    deps.store.put(rec);
+    const out = api.restore(deps, "git.linecorp.com/O/R#65") as PrRecord;
+    expect(out.state).toBe("GENERATING");
+    expect(gens).toEqual(["git.linecorp.com/O/R#65"]);
+  });
+
+  it("restore returns not-found for an unknown key", () => {
+    const { deps } = mkDeps();
+    expect(api.restore(deps, "git.linecorp.com/O/R#999")).toEqual({ error: "not found" });
+  });
+
+  it("delete removes the record and returns ok", () => {
+    const { deps } = mkDeps();
+    expect(api.delete(deps, "git.linecorp.com/O/R#65")).toEqual({ ok: true });
+    expect(deps.store.get("git.linecorp.com/O/R#65")).toBeNull();
+  });
+
+  it("delete returns not-found for an unknown key", () => {
+    const { deps } = mkDeps();
+    expect(api.delete(deps, "git.linecorp.com/O/R#999")).toEqual({ error: "not found" });
+  });
+
   it("list returns projected records", () => {
     const { deps } = mkDeps();
     const result = api.list(deps);
