@@ -53,4 +53,12 @@ describe("PrefsForm", () => {
     expect(spy.mock.calls[0][0].repoAllow).toEqual(["org/repo-a"]);
     expect(spy.mock.calls[0][0].repoDeny).toEqual(["org/repo-b"]);
   });
+
+  it("re-syncs the poll interval field when the settings prop changes", () => {
+    const { rerender } = render(<PrefsForm settings={DEFAULT_SETTINGS} onSave={() => {}} />);
+    const input = screen.getByRole("spinbutton", { name: /poll every/i }) as HTMLInputElement;
+    expect(input.value).toBe("600");
+    rerender(<PrefsForm settings={{ ...DEFAULT_SETTINGS, pollIntervalSec: 60 }} onSave={() => {}} />);
+    expect(input.value).toBe("60");
+  });
 });

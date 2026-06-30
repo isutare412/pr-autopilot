@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Settings } from "../settings";
 
 interface Props {
@@ -9,6 +9,12 @@ interface Props {
 export function PrefsForm({ settings, onSave }: Props) {
   // Spread the full settings so unexposed fields (repoAllow, repoDeny) are preserved
   const [state, setState] = useState<Settings>({ ...settings });
+
+  // Keep the interval field current when it changes elsewhere (e.g. the sidebar
+  // dropdown). Only this field is re-synced, so other in-progress edits survive.
+  useEffect(() => {
+    setState((prev) => ({ ...prev, pollIntervalSec: settings.pollIntervalSec }));
+  }, [settings.pollIntervalSec]);
 
   function set<K extends keyof Settings>(key: K, value: Settings[K]) {
     setState((prev) => ({ ...prev, [key]: value }));

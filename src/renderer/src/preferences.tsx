@@ -12,6 +12,12 @@ function PreferencesApp() {
     api.getSettings().then(setSettings);
   }, []);
 
+  useEffect(() => {
+    const off = api.onPollIntervalChanged((sec) =>
+      setSettings((prev) => (prev ? { ...prev, pollIntervalSec: sec } : prev)));
+    return () => { off(); };
+  }, []);
+
   if (!settings) {
     return (
       <div style={{ padding: "24px", color: "var(--muted)" }}>Loading…</div>
