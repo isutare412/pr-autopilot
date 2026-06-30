@@ -19,6 +19,9 @@ export type Verdict = z.infer<typeof Verdict>;
 export const Mode = z.enum(["first-review", "re-review"]);
 export type Mode = z.infer<typeof Mode>;
 
+export const OperatingMode = z.enum(["disabled", "supervised", "automated"]);
+export type OperatingMode = z.infer<typeof OperatingMode>;
+
 export const PrState = z.enum([
   "DISCOVERED", "GENERATING", "NEEDS_REVIEW", "POSTING",
   "POSTED_AWAITING_AUTHOR", "DONE", "STALE", "ERROR", "DISMISSED",

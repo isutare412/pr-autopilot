@@ -56,4 +56,19 @@ describe("settings", () => {
     saveSettings(dir, { ...DEFAULT_SETTINGS, claudePath: "/opt/claude/bin/claude" });
     expect(loadSettings(dir).claudePath).toBe("/opt/claude/bin/claude");
   });
+
+  it("defaults operatingMode to supervised and round-trips other modes", () => {
+    expect(DEFAULT_SETTINGS.operatingMode).toBe("supervised");
+    expect(DEFAULT_SETTINGS.automatedConfirmed).toBe(false);
+    const dir = mkdtempSync(join(tmpdir(), "pa-"));
+    saveSettings(dir, { ...DEFAULT_SETTINGS, operatingMode: "automated", automatedConfirmed: true });
+    expect(loadSettings(dir).operatingMode).toBe("automated");
+    expect(loadSettings(dir).automatedConfirmed).toBe(true);
+  });
+
+  it("falls back to defaults when operatingMode is invalid", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pa-"));
+    writeFileSync(join(dir, "settings.json"), JSON.stringify({ operatingMode: "turbo" }));
+    expect(loadSettings(dir).operatingMode).toBe("supervised");
+  });
 });

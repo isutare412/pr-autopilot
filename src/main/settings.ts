@@ -1,12 +1,14 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { Language, Effort } from "./core/schema";
+import { Language, Effort, OperatingMode } from "./core/schema";
 
 export const Settings = z.object({
   githubHost: z.string().default("github.com"),
   commentLanguage: Language.default("en"),
   effort: Effort.default("high"),
+  operatingMode: OperatingMode.default("supervised"),
+  automatedConfirmed: z.boolean().default(false),
   pollIntervalSec: z.number().int().positive().default(600),
   genConcurrency: z.number().int().positive().default(2),
   retentionDays: z.number().int().positive().default(30),
