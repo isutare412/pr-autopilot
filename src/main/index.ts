@@ -118,6 +118,7 @@ app.whenReady().then(async () => {
         applyLoginItem(settings.openAtLogin);
         restartPolling();
       },
+      setOperatingMode,
     });
     watchStoreForChanges(dataDir);
 

@@ -13,10 +13,16 @@ const api = {
   pollNow: () => ipcRenderer.invoke("app:pollNow"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
   setSettings: (s: unknown) => ipcRenderer.invoke("settings:set", s),
+  setMode: (m: string) => ipcRenderer.invoke("mode:set", m),
   onRecordsChanged: (cb: () => void) => {
     const fn = () => cb();
     ipcRenderer.on("records-changed", fn);
     return () => ipcRenderer.removeListener("records-changed", fn);
+  },
+  onModeChanged: (cb: (m: string) => void) => {
+    const fn = (_e: unknown, m: string) => cb(m);
+    ipcRenderer.on("mode-changed", fn);
+    return () => ipcRenderer.removeListener("mode-changed", fn);
   },
   onFocusPr: (cb: (key: string) => void) => {
     const fn = (_e: unknown, key: string) => cb(key);

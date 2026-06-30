@@ -4,10 +4,12 @@ import { api, ApiDeps } from "./core/api";
 import { Store } from "./core/store";
 import { Orchestrator } from "./core/orchestrator";
 import { Settings } from "./settings";
+import { OperatingMode } from "./core/schema";
 
 export interface IpcDeps {
   store: Store; orch: Orchestrator; dataDir: string;
   nowIso: () => string; getSettings: () => Settings; setSettings: (s: Settings) => void;
+  setOperatingMode: (m: OperatingMode) => void;
 }
 
 export function registerIpc(d: IpcDeps): void {
@@ -27,6 +29,7 @@ export function registerIpc(d: IpcDeps): void {
   ipcMain.handle("app:pollNow", () => d.orch.runPoll());
   ipcMain.handle("settings:get", () => d.getSettings());
   ipcMain.handle("settings:set", (_e, s: Settings) => { d.setSettings(s); return d.getSettings(); });
+  ipcMain.handle("mode:set", (_e, m: OperatingMode) => d.setOperatingMode(m));
 }
 
 /** The Store rewrites index.json on every put; watch the directory and notify all windows.
