@@ -326,6 +326,18 @@ body {
   padding: 40px 4px;
 }
 
+/* Queue empty placeholder — centered in the full-height sidebar */
+.queue-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 24px;
+  text-align: center;
+  line-height: 1.6;
+  color: var(--faint);
+}
+
 .detail-empty {
   height: 100%;
   display: flex;

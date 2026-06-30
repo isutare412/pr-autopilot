@@ -82,7 +82,7 @@ export function App() {
       <div className="app">
         <aside id="queue">
           {rows.length === 0 ? (
-            <div className="empty">
+            <div className="queue-empty">
               No reviews in the queue yet — they'll appear here as PRs request your review.
             </div>
           ) : (
