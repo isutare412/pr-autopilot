@@ -108,6 +108,7 @@ describe("api", () => {
     const out = api.restore(deps, "git.linecorp.com/O/R#65") as PrRecord;
     expect(out.state).toBe("NEEDS_REVIEW");
     expect(out.doneAt).toBeNull();
+    expect(out.updatedAt).toBe("2026-06-29T00:00:00Z");
   });
 
   it("restore derives POSTED_AWAITING_AUTHOR when a postResult exists", () => {
@@ -129,6 +130,17 @@ describe("api", () => {
     const out = api.restore(deps, "git.linecorp.com/O/R#65") as PrRecord;
     expect(out.state).toBe("GENERATING");
     expect(gens).toEqual(["git.linecorp.com/O/R#65"]);
+  });
+
+  it("restore derives ERROR when an error exists and no draft or postResult", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("git.linecorp.com/O/R#65")!;
+    rec.draft = null;
+    rec.error = { step: "generate", message: "boom" };
+    rec.state = "DISMISSED";
+    deps.store.put(rec);
+    const out = api.restore(deps, "git.linecorp.com/O/R#65") as PrRecord;
+    expect(out.state).toBe("ERROR");
   });
 
   it("restore returns not-found for an unknown key", () => {
