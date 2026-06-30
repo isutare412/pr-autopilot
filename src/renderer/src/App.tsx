@@ -42,6 +42,12 @@ export function App() {
     await loadList();
   }
 
+  async function restore(key: string) {
+    await api.restore(key);
+    await loadList();
+    if (key === selectedKeyRef.current) await loadDetail(key);
+  }
+
   async function pollNow() {
     if (polling) return;
     setPolling(true);
@@ -92,7 +98,8 @@ export function App() {
                 row={row}
                 selected={row.key === selectedKey}
                 onOpen={loadDetail}
-                onDelete={dismiss}
+                onDismiss={dismiss}
+                onRestore={restore}
               />
             ))
           )}

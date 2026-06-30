@@ -4,16 +4,34 @@ interface QueueRowProps {
   row: UiRow;
   selected: boolean;
   onOpen: (key: string) => void;
-  onDelete: (key: string) => void;
+  onDismiss: (key: string) => void;
+  onRestore: (key: string) => void;
 }
 
-export function QueueRow({ row, selected, onOpen, onDelete }: QueueRowProps) {
+const DISMISS_ICON = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a13.16 13.16 0 0 1-1.67 2.68" />
+    <path d="M6.1 6.1A13.12 13.12 0 0 0 2 12s3 8 10 8a9.12 9.12 0 0 0 5.9-2.1" />
+    <line x1="2" y1="2" x2="22" y2="22" />
+  </svg>
+);
+
+const RESTORE_ICON = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+    <path d="M3 3v5h5" />
+  </svg>
+);
+
+export function QueueRow({ row, selected, onOpen, onDismiss, onRestore }: QueueRowProps) {
   const c = row.counts;
   const badge = c ? `C${c.critical} M${c.major} m${c.minor} n${c.nit}` : "";
+  const hidden = row.state === "DISMISSED";
 
-  function handleDelete(e: React.MouseEvent) {
+  function handleAction(e: React.MouseEvent) {
     e.stopPropagation();
-    onDelete(row.key);
+    if (hidden) onRestore(row.key);
+    else onDismiss(row.key);
   }
 
   return (
@@ -28,17 +46,13 @@ export function QueueRow({ row, selected, onOpen, onDelete }: QueueRowProps) {
       <div className="row-title">{row.title}</div>
       <div className="row-state">{row.state}</div>
       <button
-        className="row-del"
+        className="row-action"
         data-key={row.key}
-        title="Delete"
-        aria-label={`Delete #${row.number}`}
-        onClick={handleDelete}
+        title={hidden ? "Restore" : "Dismiss"}
+        aria-label={`${hidden ? "Restore" : "Dismiss"} #${row.number}`}
+        onClick={handleAction}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6" />
-          <line x1="10" y1="11" x2="10" y2="17" />
-          <line x1="14" y1="11" x2="14" y2="17" />
-        </svg>
+        {hidden ? RESTORE_ICON : DISMISS_ICON}
       </button>
     </div>
   );
