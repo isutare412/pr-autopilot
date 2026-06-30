@@ -40,6 +40,12 @@ export class Store {
     this.writeIndex();
   }
 
+  delete(key: string): void {
+    const f = this.fileFor(key);
+    if (existsSync(f)) rmSync(f);
+    this.writeIndex();
+  }
+
   list(): PrRecord[] {
     return readdirSync(this.prsDir)
       .filter((f) => f.endsWith(".json"))

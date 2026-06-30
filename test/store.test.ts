@@ -95,6 +95,20 @@ describe("Store", () => {
     expect(s.get("git.linecorp.com/O/R#72")).toBeNull();
   });
 
+  it("delete removes the record file and updates the index", () => {
+    const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
+    s.put(rec());
+    s.put(rec({ key: "git.linecorp.com/O/R#66", number: 66 }));
+    s.delete("git.linecorp.com/O/R#65");
+    expect(s.get("git.linecorp.com/O/R#65")).toBeNull();
+    expect(s.list().map((r) => r.number)).toEqual([66]);
+  });
+
+  it("delete is a no-op for an unknown key", () => {
+    const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
+    expect(() => s.delete("git.linecorp.com/O/R#999")).not.toThrow();
+  });
+
   it("withLock keeps the map entry while a later caller is still queued", async () => {
     const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
     let releaseA!: () => void;
