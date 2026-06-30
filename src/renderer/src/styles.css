@@ -78,6 +78,25 @@ body {
   letter-spacing: 0.04em;
 }
 
+.poll-btn {
+  margin-left: auto;
+  font: 600 11px/1 var(--ui);
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent-dim);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.poll-btn:hover:not(:disabled) {
+  background: rgba(70, 198, 192, 0.08);
+}
+.poll-btn:disabled {
+  color: var(--faint);
+  border-color: var(--line);
+  cursor: default;
+}
+
 /* ---- Two-pane layout ---- */
 
 .app {

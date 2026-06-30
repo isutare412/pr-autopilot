@@ -8,6 +8,7 @@ export function App() {
   const [rows, setRows] = useState<UiRow[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [record, setRecord] = useState<UiRecord | null>(null);
+  const [polling, setPolling] = useState(false);
 
   // Ref so stable subscriptions (bound once on mount) can read the current key
   // without re-binding whenever selectedKey state changes.
@@ -41,6 +42,19 @@ export function App() {
     await loadList();
   }
 
+  async function pollNow() {
+    if (polling) return;
+    setPolling(true);
+    try {
+      await api.pollNow();
+      await loadList();
+    } catch (e) {
+      console.error("[pollNow]", e);
+    } finally {
+      setPolling(false);
+    }
+  }
+
   useEffect(() => {
     loadList();
     // Subscribe once; use ref so these closures always read the current selection.
@@ -61,6 +75,9 @@ export function App() {
       <header className="topbar">
         <span className="brand">PR&nbsp;AUTOPILOT</span>
         <span className="tagline">review console</span>
+        <button className="poll-btn" onClick={pollNow} disabled={polling}>
+          {polling ? "Polling…" : "Poll now"}
+        </button>
       </header>
       <div className="app">
         <aside id="queue">
