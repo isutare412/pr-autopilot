@@ -32,6 +32,15 @@ describe("PrefsForm", () => {
     expect(spy.mock.calls[0][0]).toMatchObject({ effort: "max" });
   });
 
+  it("calls onSave with an updated claudePath when Save is clicked", () => {
+    const spy = vi.fn();
+    render(<PrefsForm settings={DEFAULT_SETTINGS} onSave={spy} />);
+    const input = screen.getByRole("textbox", { name: /claude path/i }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "/opt/claude/bin/claude" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    expect(spy.mock.calls[0][0]).toMatchObject({ claudePath: "/opt/claude/bin/claude" });
+  });
+
   it("preserves repoAllow and repoDeny in the saved object", () => {
     const spy = vi.fn();
     const settings = {

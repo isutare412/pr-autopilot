@@ -114,6 +114,18 @@ export function PrefsForm({ settings, onSave }: Props) {
           />
         </div>
 
+        <div className="prefs-row">
+          <label htmlFor="claudePath">Claude path</label>
+          <input
+            id="claudePath"
+            className="edit prefs-input"
+            type="text"
+            placeholder="auto-detect (leave empty)"
+            value={state.claudePath}
+            onChange={(e) => set("claudePath", e.target.value)}
+          />
+        </div>
+
         <div className="prefs-row prefs-row-check">
           <label htmlFor="notify">Send notifications</label>
           <input
@@ -140,7 +152,7 @@ export function PrefsForm({ settings, onSave }: Props) {
           Save
         </button>
         <p className="prefs-restart-note">
-          Changes to GitHub host, concurrency, retention, and repo filters take effect after the app restarts.
+          Changes to GitHub host, concurrency, retention, repo filters, and Claude path take effect after the app restarts.
         </p>
       </div>
     </form>
