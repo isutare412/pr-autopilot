@@ -84,6 +84,11 @@ app.whenReady().then(async () => {
       for (const w of BrowserWindow.getAllWindows()) w.webContents.send("mode-changed", settings.operatingMode);
     };
 
+    const broadcastPollInterval = () => {
+      for (const w of BrowserWindow.getAllWindows())
+        w.webContents.send("poll-interval-changed", settings.pollIntervalSec);
+    };
+
     async function setOperatingMode(mode: OperatingMode): Promise<void> {
       if (mode === settings.operatingMode) { refreshTray(() => store.list(), trayHandlers); broadcastMode(); return; }
       if (mode === "automated" && !settings.automatedConfirmed) {
@@ -107,6 +112,18 @@ app.whenReady().then(async () => {
       broadcastMode();
     }
 
+    function setPollInterval(sec: number): void {
+      // Ignore junk; on a no-op still rebroadcast so a stale sender resyncs.
+      if (!Number.isInteger(sec) || sec <= 0 || sec === settings.pollIntervalSec) {
+        broadcastPollInterval();
+        return;
+      }
+      settings = { ...settings, pollIntervalSec: sec };
+      saveSettings(dataDir, settings);
+      restartPolling();
+      broadcastPollInterval();
+    }
+
     registerIpc({
       store, orch, dataDir, nowIso,
       getSettings: () => settings,
@@ -117,8 +134,11 @@ app.whenReady().then(async () => {
         saveSettings(dataDir, settings);
         applyLoginItem(settings.openAtLogin);
         restartPolling();
+        broadcastPollInterval();
       },
       setOperatingMode,
+      openPreferences: () => showPreferences(),
+      setPollInterval,
     });
     watchStoreForChanges(dataDir);
 
