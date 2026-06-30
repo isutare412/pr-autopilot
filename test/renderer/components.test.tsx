@@ -74,6 +74,27 @@ describe("ActionsBar", () => {
     rerender(<ActionsBar {...props} state="DISMISSED" />);
     expect(screen.getByRole("button", { name: /^restore$/i })).toBeInTheDocument();
   });
+
+  it("sends feedback on Cmd+Enter and clears the textarea", () => {
+    const onFeedback = vi.fn();
+    render(<ActionsBar {...props} onFeedback={onFeedback} state="NEEDS_REVIEW" />);
+    const ta = screen.getByPlaceholderText(/resolve V2/i) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: "soften #1" } });
+    fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
+    expect(onFeedback).toHaveBeenCalledWith("soften #1");
+    expect(ta.value).toBe("");
+  });
+
+  it("does not send empty or whitespace-only feedback", () => {
+    const onFeedback = vi.fn();
+    render(<ActionsBar {...props} onFeedback={onFeedback} state="NEEDS_REVIEW" />);
+    const ta = screen.getByPlaceholderText(/resolve V2/i);
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    expect(onFeedback).not.toHaveBeenCalled();
+    fireEvent.change(ta, { target: { value: "   " } });
+    fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
+    expect(onFeedback).not.toHaveBeenCalled();
+  });
 });
 
 describe("DeleteButton", () => {

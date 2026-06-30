@@ -49,6 +49,7 @@ export function ActionsBar({ draft, state, postVerdict, onApprove, onDismiss, on
   const pretty = state.toLowerCase().replace(/_/g, " ");
 
   function handleSend() {
+    if (!feedbackText.trim()) return;
     onFeedback(feedbackText);
     setFeedbackText("");
   }
@@ -87,18 +88,26 @@ export function ActionsBar({ draft, state, postVerdict, onApprove, onDismiss, on
       ) : (
         <span className="summary">already {pretty}</span>
       )}
-      {hidden ? (
-        <button type="button" className="del-btn" onClick={onRestore}>Restore</button>
-      ) : (
-        <button type="button" className="del-btn" onClick={onDismiss}>Dismiss</button>
-      )}
-      <DeleteButton onDelete={onDelete} />
+      <div className="actions-trailing">
+        {hidden ? (
+          <button type="button" className="del-btn" onClick={onRestore}>Restore</button>
+        ) : (
+          <button type="button" className="del-btn" onClick={onDismiss}>Dismiss</button>
+        )}
+        <DeleteButton onDelete={onDelete} />
+      </div>
       <div className="fb">
         <textarea
           id="feedback"
           placeholder="resolve V2 · drop #1 · soften #1"
           value={feedbackText}
           onChange={(e) => setFeedbackText(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
         />
         <button id="send" onClick={handleSend}>
           Send →
