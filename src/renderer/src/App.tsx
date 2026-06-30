@@ -150,35 +150,50 @@ export function App() {
             </span>
           </span>
         </span>
-        <button className="poll-btn" onClick={pollNow} disabled={polling}>
-          {polling ? "Polling…" : "Poll now"}
-        </button>
         <button
-          className="hidden-toggle"
-          onClick={() => setShowHidden((v) => !v)}
-          aria-pressed={showHidden}
+          type="button"
+          className="settings-btn"
+          aria-label="Settings"
+          onClick={() => api.openPreferences()}
         >
-          {showHidden ? "Hide hidden" : `Show hidden${hiddenCount ? ` (${hiddenCount})` : ""}`}
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
         </button>
       </header>
       <div className="app">
         <aside id="queue">
-          {visibleRows.length === 0 ? (
-            <div className="queue-empty">
-              No reviews in the queue yet — they'll appear here as PRs request your review.
-            </div>
-          ) : (
-            visibleRows.map((row) => (
-              <QueueRow
-                key={row.key}
-                row={row}
-                selected={row.key === selectedKey}
-                onOpen={loadDetail}
-                onDismiss={dismiss}
-                onRestore={restore}
-              />
-            ))
-          )}
+          <div className="queue-toolbar">
+            <button className="poll-btn" onClick={pollNow} disabled={polling}>
+              {polling ? "Polling…" : "Poll now"}
+            </button>
+            <button
+              className="hidden-toggle"
+              onClick={() => setShowHidden((v) => !v)}
+              aria-pressed={showHidden}
+            >
+              {showHidden ? "Hide hidden" : `Show hidden${hiddenCount ? ` (${hiddenCount})` : ""}`}
+            </button>
+          </div>
+          <div className="queue-list">
+            {visibleRows.length === 0 ? (
+              <div className="queue-empty">
+                No reviews in the queue yet — they'll appear here as PRs request your review.
+              </div>
+            ) : (
+              visibleRows.map((row) => (
+                <QueueRow
+                  key={row.key}
+                  row={row}
+                  selected={row.key === selectedKey}
+                  onOpen={loadDetail}
+                  onDismiss={dismiss}
+                  onRestore={restore}
+                />
+              ))
+            )}
+          </div>
         </aside>
         <main id="detail">
           <Detail

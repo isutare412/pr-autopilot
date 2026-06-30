@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   feedback: vi.fn(),
   dismiss: vi.fn(),
   pollNow: vi.fn(async () => {}),
+  openPreferences: vi.fn(),
   onRecordsChanged: vi.fn(() => () => {}),
   onFocusPr: vi.fn(() => () => {}),
   getSettings: vi.fn(async () => ({ operatingMode: "supervised" })),
@@ -82,5 +83,13 @@ describe("App — Show hidden", () => {
     expect(screen.queryByText("Hidden row")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /show hidden/i }));
     await waitFor(() => expect(screen.getByText("Hidden row")).toBeInTheDocument());
+  });
+});
+
+describe("App — settings gear", () => {
+  it("opens Preferences when the gear is clicked", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /settings/i }));
+    await waitFor(() => expect(api.openPreferences).toHaveBeenCalledTimes(1));
   });
 });
