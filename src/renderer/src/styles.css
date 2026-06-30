@@ -881,9 +881,10 @@ body {
   position: sticky;
   bottom: 0;
   margin-top: 18px;
+  /* No border here: a hard line lands in the gradient's transparent top and
+     would overlap drafts scrolling behind the bar. The fade is the separator. */
   background: linear-gradient(to top, var(--bg) 78%, transparent);
   padding: 14px 0 18px;
-  border-top: 1px solid var(--line);
   display: flex;
   align-items: center;
   gap: 12px;
