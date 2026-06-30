@@ -95,6 +95,14 @@ describe("ActionsBar", () => {
     fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
     expect(onFeedback).not.toHaveBeenCalled();
   });
+
+  it("labels the Post and Send buttons without trailing arrows", () => {
+    const { rerender } = render(<ActionsBar {...props} state="NEEDS_REVIEW" />);
+    expect(screen.getByRole("button", { name: "Post" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+    rerender(<ActionsBar {...props} state="ERROR" />);
+    expect(screen.getByRole("button", { name: "Retry post" })).toBeInTheDocument();
+  });
 });
 
 describe("DeleteButton", () => {

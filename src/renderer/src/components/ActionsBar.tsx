@@ -79,7 +79,7 @@ export function ActionsBar({ draft, state, postVerdict, onApprove, onDismiss, on
             </button>
           </div>
           <button id="approve" className={verdict} onClick={() => onApprove(verdict)}>
-            {isError ? "Retry post →" : "Post →"}
+            {isError ? "Retry post" : "Post"}
           </button>
           <span className={`summary${isError ? " summary--error" : ""}`}>
             {isError ? "last post didn’t finish — retry to send the rest" : postSummary(draft, verdict)}
@@ -110,7 +110,7 @@ export function ActionsBar({ draft, state, postVerdict, onApprove, onDismiss, on
           }}
         />
         <button id="send" onClick={handleSend}>
-          Send →
+          Send
         </button>
       </div>
     </div>
