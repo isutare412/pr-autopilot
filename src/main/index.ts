@@ -147,6 +147,7 @@ app.whenReady().then(async () => {
     watchStoreForChanges(dataDir);
 
     showMain(); // open the window on first launch
+    app.on("activate", () => showMain()); // dock-icon click re-shows the (hidden, not destroyed) window
   } catch (e) {
     dialog.showErrorBox("PR Autopilot failed to start", String((e as Error)?.stack ?? e));
   }

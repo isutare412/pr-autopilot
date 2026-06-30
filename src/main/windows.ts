@@ -22,8 +22,7 @@ export function showMain(key?: string): void {
       webPreferences: { preload: PRELOAD },
     });
     main.on("close", (e) => { if (!isQuitting) { e.preventDefault(); main?.hide(); } }); // hide unless really quitting
-    main.on("show", () => { app.dock?.show(); }); // dock visible only while the window is open
-    main.on("hide", () => { app.dock?.hide(); }); // hiding clears the running-indicator dot
+    main.on("show", () => { app.dock?.show(); }); // dock icon appears with the window and persists, so it can reopen a closed window
     const r = rendererUrl("index");
     r.url ? main.loadURL(r.url) : main.loadFile(r.file!);
   }
