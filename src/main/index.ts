@@ -37,6 +37,7 @@ app.whenReady().then(async () => {
       shimDir,
       guardSettings: join(getPluginDir(), "..", "build", "guard.settings.json"),
       pluginDir: getPluginDir(),
+      claudePath: expandTilde(settings.claudePath),
       dataDir,
     };
 

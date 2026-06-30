@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildPrompt, generate, claudeArgs, streamEventToActivity, ClaudeSpawner } from "../src/main/core/generator";
+import { buildPrompt, generate, claudeArgs, streamEventToActivity, resolveClaudeBin, ClaudeSpawner } from "../src/main/core/generator";
 import type { Draft } from "../src/main/core/schema";
 
 describe("claudeArgs", () => {
@@ -47,7 +47,7 @@ function spawnerWriting(content: (n: number) => string): ClaudeSpawner {
 const deps = () => ({
   spawner: spawnerWriting(() => JSON.stringify(validDraft)),
   claudeConfigDir: "/tmp/cfg", shimDir: "/tmp/bin", guardSettings: "/tmp/guard.json",
-  pluginDir: "/Resources/plugin",
+  pluginDir: "/Resources/plugin", claudePath: "",
   dataDir: mkdtempSync(join(tmpdir(), "gen-")),
 });
 
@@ -85,5 +85,23 @@ describe("generate", () => {
   it("throws after a second invalid output", async () => {
     const d = { ...deps(), spawner: spawnerWriting(() => "STILL NOT JSON") };
     await expect(generate(d, { url: "http://pr/65", language: "en", effort: "high" })).rejects.toThrow();
+  });
+});
+
+describe("resolveClaudeBin", () => {
+  it("returns the first PATH dir that contains claude", () => {
+    const exists = (p: string) => p === "/opt/homebrew/bin/claude";
+    expect(resolveClaudeBin("/usr/bin:/opt/homebrew/bin:/bin", "", exists)).toBe("/opt/homebrew/bin/claude");
+  });
+  it("falls back to the configured path when PATH has no claude", () => {
+    const exists = (p: string) => p === "/custom/claude";
+    expect(resolveClaudeBin("/usr/bin:/bin", "/custom/claude", exists)).toBe("/custom/claude");
+  });
+  it("prefers a PATH hit over the configured path", () => {
+    const exists = (p: string) => p === "/usr/bin/claude" || p === "/custom/claude";
+    expect(resolveClaudeBin("/usr/bin", "/custom/claude", exists)).toBe("/usr/bin/claude");
+  });
+  it("throws a descriptive error mentioning Preferences when neither resolves", () => {
+    expect(() => resolveClaudeBin("/usr/bin:/bin", "", () => false)).toThrow(/Preferences/);
   });
 });

@@ -6,8 +6,29 @@ import { buildPrompt } from "./prompt";
 
 export { buildPrompt };
 
+/** Resolve the `claude` binary to an absolute path.
+ *  1. first dir on `pathEnv` that holds an executable `claude` wins;
+ *  2. else the user-configured `configuredPath` if it exists;
+ *  3. else throw a message that points at the Preferences setting.
+ *  `exists` is injectable for tests. */
+export function resolveClaudeBin(
+  pathEnv: string,
+  configuredPath: string,
+  exists: (p: string) => boolean = existsSync,
+): string {
+  for (const dir of pathEnv.split(":")) {
+    if (!dir) continue;
+    const cand = join(dir, "claude");
+    if (exists(cand)) return cand;
+  }
+  if (configuredPath && exists(configuredPath)) return configuredPath;
+  throw new Error(
+    "Claude Code CLI (claude) not found on PATH. Set its full path in Preferences → Claude path.",
+  );
+}
+
 export interface ClaudeSpawner {
-  run(args: { prompt: string; outFile: string; cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; settings: string; pluginDir: string; effort: Effort; onActivity?: (labels: string[]) => void }): Promise<void>;
+  run(args: { prompt: string; outFile: string; cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; settings: string; pluginDir: string; claudePath: string; effort: Effort; onActivity?: (labels: string[]) => void }): Promise<void>;
 }
 
 /**
@@ -69,9 +90,10 @@ export function streamEventToActivity(line: string): string[] {
 
 export function realClaudeSpawner(): ClaudeSpawner {
   return {
-    run({ prompt, env, cwd, timeoutMs, settings, pluginDir, effort, onActivity }) {
+    run({ prompt, env, cwd, timeoutMs, settings, pluginDir, claudePath, effort, onActivity }) {
       return new Promise((resolve, reject) => {
-        const p = spawn("claude", claudeArgs(prompt, settings, pluginDir, effort), {
+        const bin = resolveClaudeBin(env.PATH ?? "", claudePath);
+        const p = spawn(bin, claudeArgs(prompt, settings, pluginDir, effort), {
           cwd, env, stdio: ["ignore", "pipe", "pipe"],
         });
         let err = "";
@@ -102,6 +124,7 @@ export interface GenDeps {
   shimDir: string;
   guardSettings: string;
   pluginDir: string;
+  claudePath: string;
   dataDir: string;
 }
 
@@ -122,7 +145,7 @@ export async function generate(deps: GenDeps, input: { url: string; priorDraft?:
       if (existsSync(outFile)) rmSync(outFile);
       const prompt = buildPrompt({ url: input.url, outFile, priorDraft: input.priorDraft, feedback: input.feedback, language: input.language });
       try {
-        await deps.spawner.run({ prompt, outFile, cwd: tmp, env, timeoutMs: TIMEOUT_MS, settings: deps.guardSettings, pluginDir: deps.pluginDir, effort: input.effort, onActivity });
+        await deps.spawner.run({ prompt, outFile, cwd: tmp, env, timeoutMs: TIMEOUT_MS, settings: deps.guardSettings, pluginDir: deps.pluginDir, claudePath: deps.claudePath, effort: input.effort, onActivity });
         if (!existsSync(outFile)) throw new Error("generator produced no out-file");
         return GeneratedDraft.parse(JSON.parse(readFileSync(outFile, "utf8")));
       } catch (e) {
