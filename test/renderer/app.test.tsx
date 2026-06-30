@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import type { UiRow } from "../../src/renderer/src/types";
 
 // The renderer `api` is `window.api`; mock the module App imports.
 const api = vi.hoisted(() => ({
-  list: vi.fn(async () => ({ items: [] })),
+  list: vi.fn(async () => ({ items: [] as UiRow[] })),
   get: vi.fn(async () => null),
   toggle: vi.fn(),
   edit: vi.fn(),
@@ -42,5 +43,19 @@ describe("App — Poll now", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /polling/i })).toBeDisabled());
     resolvePoll();
     await waitFor(() => expect(screen.getByRole("button", { name: /poll now/i })).not.toBeDisabled());
+  });
+});
+
+describe("App — Show hidden", () => {
+  it("hides DISMISSED rows until 'Show hidden' is toggled", async () => {
+    api.list.mockResolvedValue({ items: [
+      { key: "k1", number: 1, repo: "r", title: "Active row", state: "NEEDS_REVIEW", mode: "first-review", counts: null, updatedAt: "" },
+      { key: "k2", number: 2, repo: "r", title: "Hidden row", state: "DISMISSED", mode: "first-review", counts: null, updatedAt: "" },
+    ] as UiRow[] });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("Active row")).toBeInTheDocument());
+    expect(screen.queryByText("Hidden row")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /show hidden/i }));
+    await waitFor(() => expect(screen.getByText("Hidden row")).toBeInTheDocument());
   });
 });

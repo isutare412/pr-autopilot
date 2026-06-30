@@ -9,6 +9,7 @@ export function App() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [record, setRecord] = useState<UiRecord | null>(null);
   const [polling, setPolling] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
 
   // Ref so stable subscriptions (bound once on mount) can read the current key
   // without re-binding whenever selectedKey state changes.
@@ -17,9 +18,8 @@ export function App() {
   async function loadList() {
     const result = await api.list();
     const items: UiRow[] = (result as { items: UiRow[] }).items ?? [];
-    const visible = items.filter((r) => r.state !== "DISMISSED");
-    setRows(visible);
-    const needsReview = visible.filter((r) => r.state === "NEEDS_REVIEW").length;
+    setRows(items);
+    const needsReview = items.filter((r) => r.state === "NEEDS_REVIEW").length;
     document.title = needsReview > 0 ? `PR Autopilot — ${needsReview} to review` : "PR Autopilot";
   }
 
@@ -86,6 +86,9 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const hiddenCount = rows.filter((r) => r.state === "DISMISSED").length;
+  const visibleRows = showHidden ? rows : rows.filter((r) => r.state !== "DISMISSED");
+
   return (
     <>
       <header className="topbar">
@@ -94,15 +97,22 @@ export function App() {
         <button className="poll-btn" onClick={pollNow} disabled={polling}>
           {polling ? "Polling…" : "Poll now"}
         </button>
+        <button
+          className="hidden-toggle"
+          onClick={() => setShowHidden((v) => !v)}
+          aria-pressed={showHidden}
+        >
+          {showHidden ? "Hide hidden" : `Show hidden${hiddenCount ? ` (${hiddenCount})` : ""}`}
+        </button>
       </header>
       <div className="app">
         <aside id="queue">
-          {rows.length === 0 ? (
+          {visibleRows.length === 0 ? (
             <div className="queue-empty">
               No reviews in the queue yet — they'll appear here as PRs request your review.
             </div>
           ) : (
-            rows.map((row) => (
+            visibleRows.map((row) => (
               <QueueRow
                 key={row.key}
                 row={row}

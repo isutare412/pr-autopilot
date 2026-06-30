@@ -96,6 +96,23 @@ body {
   border-color: var(--line);
   cursor: default;
 }
+.hidden-toggle {
+  font: 600 11px/1 var(--ui);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.hidden-toggle:hover {
+  color: var(--fg);
+  border-color: var(--accent-dim);
+}
+.hidden-toggle[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
 
 /* ---- Two-pane layout ---- */
 
