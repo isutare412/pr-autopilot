@@ -11,6 +11,7 @@ export const Settings = z.object({
   genConcurrency: z.number().int().positive().default(2),
   retentionDays: z.number().int().positive().default(30),
   claudeConfigDir: z.string().default("~/.claude"),
+  claudePath: z.string().default(""),
   repoAllow: z.array(z.string()).default([]),
   repoDeny: z.array(z.string()).default([]),
   notify: z.boolean().default(true),

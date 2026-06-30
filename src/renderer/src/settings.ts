@@ -10,6 +10,7 @@ export interface Settings {
   genConcurrency: number;
   retentionDays: number;
   claudeConfigDir: string;
+  claudePath: string;
   repoAllow: string[];
   repoDeny: string[];
   notify: boolean;
@@ -24,6 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
   genConcurrency: 2,
   retentionDays: 30,
   claudeConfigDir: "~/.claude",
+  claudePath: "",
   repoAllow: [],
   repoDeny: [],
   notify: true,

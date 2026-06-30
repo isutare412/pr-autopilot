@@ -49,4 +49,11 @@ describe("settings", () => {
     writeFileSync(join(dir, "settings.json"), JSON.stringify({ effort: "turbo" }));
     expect(loadSettings(dir).effort).toBe("high");
   });
+
+  it("defaults claudePath to an empty string and round-trips a set value", () => {
+    expect(DEFAULT_SETTINGS.claudePath).toBe("");
+    const dir = mkdtempSync(join(tmpdir(), "pa-"));
+    saveSettings(dir, { ...DEFAULT_SETTINGS, claudePath: "/opt/claude/bin/claude" });
+    expect(loadSettings(dir).claudePath).toBe("/opt/claude/bin/claude");
+  });
 });
