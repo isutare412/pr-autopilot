@@ -36,7 +36,21 @@ function PrHead({ number, title }: { number: number; title: string }) {
 
 export function Detail({ record, onToggle, onEdit, onApprove, onDelete, onFeedback }: DetailProps) {
   if (!record) {
-    return <div className="empty">Select a PR to review.</div>;
+    return (
+      <div className="detail-empty">
+        <svg className="detail-empty__glyph" viewBox="0 0 100 100" aria-hidden="true">
+          <g fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round">
+            <circle cx="50" cy="50" r="36" />
+            <line x1="50" y1="50" x2="17" y2="50" />
+            <line x1="50" y1="50" x2="83" y2="50" />
+            <line x1="50" y1="50" x2="50" y2="83" />
+          </g>
+          <circle cx="50" cy="50" r="8" fill="currentColor" />
+        </svg>
+        <p className="detail-empty__title">Select a PR to review</p>
+        <p className="detail-empty__hint">Pick a pull request from the queue to see its draft review.</p>
+      </div>
+    );
   }
 
   if (record.state === "GENERATING") {

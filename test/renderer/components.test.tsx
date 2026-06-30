@@ -1,8 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { QueueRow } from "../../src/renderer/src/components/QueueRow";
 import { FindingCard } from "../../src/renderer/src/components/FindingCard";
 import { ActionsBar } from "../../src/renderer/src/components/ActionsBar";
+import { Detail } from "../../src/renderer/src/components/Detail";
+
+afterEach(cleanup);
 
 describe("QueueRow", () => {
   it("renders #number, repo, state and fires onOpen", () => {
@@ -32,5 +35,16 @@ describe("ActionsBar", () => {
     expect(screen.getByText(/Approve/).closest("button")).not.toBeDisabled();
     rerender(<ActionsBar draft={{ overallEn: "", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] }} state="DONE" onApprove={vi.fn()} onDelete={vi.fn()} onFeedback={vi.fn()} />);
     expect(screen.getByText(/Approve/).closest("button")).toBeDisabled();
+  });
+});
+
+describe("Detail empty state", () => {
+  const noop = () => {};
+  it("shows the branded placeholder when no record is selected", () => {
+    render(
+      <Detail record={null} onToggle={noop} onEdit={noop} onApprove={noop} onDelete={noop} onFeedback={noop} />,
+    );
+    expect(screen.getByText("Select a PR to review")).toBeInTheDocument();
+    expect(screen.getByText(/Pick a pull request from the queue/)).toBeInTheDocument();
   });
 });
