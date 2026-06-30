@@ -737,6 +737,23 @@ body {
   margin-top: 14px;
 }
 
+.del-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.del-confirm__q {
+  font: 600 12px/1 var(--mono);
+  color: var(--crit);
+  letter-spacing: 0.03em;
+}
+
+.del-btn--danger {
+  color: var(--crit);
+  border-color: var(--crit);
+}
+
 .summary {
   font: 12px/1.4 var(--mono);
   color: var(--accent);

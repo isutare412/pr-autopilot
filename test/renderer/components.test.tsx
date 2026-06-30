@@ -4,6 +4,7 @@ import { QueueRow } from "../../src/renderer/src/components/QueueRow";
 import { FindingCard } from "../../src/renderer/src/components/FindingCard";
 import { ActionsBar } from "../../src/renderer/src/components/ActionsBar";
 import { Detail } from "../../src/renderer/src/components/Detail";
+import { DeleteButton } from "../../src/renderer/src/components/DeleteButton";
 
 afterEach(cleanup);
 
@@ -35,6 +36,26 @@ describe("ActionsBar", () => {
     expect(screen.getByText(/Approve/).closest("button")).not.toBeDisabled();
     rerender(<ActionsBar draft={{ overallEn: "", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] }} state="DONE" onApprove={vi.fn()} onDelete={vi.fn()} onFeedback={vi.fn()} />);
     expect(screen.getByText(/Approve/).closest("button")).toBeDisabled();
+  });
+});
+
+describe("DeleteButton", () => {
+  it("requires a confirm step before firing onDelete", () => {
+    const onDelete = vi.fn();
+    render(<DeleteButton onDelete={onDelete} />);
+    fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+    expect(onDelete).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancel aborts without firing onDelete", () => {
+    const onDelete = vi.fn();
+    render(<DeleteButton onDelete={onDelete} />);
+    fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /^delete$/i })).toBeInTheDocument();
   });
 });
 
