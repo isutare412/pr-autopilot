@@ -117,6 +117,39 @@ export function App() {
             </button>
           ))}
         </div>
+        <span className="mode-help">
+          <button
+            type="button"
+            className="mode-help__btn"
+            aria-label="What the modes mean"
+            aria-describedby="mode-help-tip"
+          >
+            ?
+          </button>
+          <span id="mode-help-tip" role="tooltip" className="mode-help__tip">
+            <span className="mode-help__row">
+              <span className="mode-help__led mode-help__led--off" aria-hidden="true" />
+              <span className="mode-help__text">
+                <span className="mode-help__name">Disabled</span>
+                <span className="mode-help__desc">Pauses watching for review requests.</span>
+              </span>
+            </span>
+            <span className="mode-help__row">
+              <span className="mode-help__led mode-help__led--sup" aria-hidden="true" />
+              <span className="mode-help__text">
+                <span className="mode-help__name">Supervised</span>
+                <span className="mode-help__desc">Drafts each review for you to approve before posting.</span>
+              </span>
+            </span>
+            <span className="mode-help__row">
+              <span className="mode-help__led mode-help__led--auto" aria-hidden="true" />
+              <span className="mode-help__text">
+                <span className="mode-help__name">Automated</span>
+                <span className="mode-help__desc">Posts reviews and approvals automatically — no approval step.</span>
+              </span>
+            </span>
+          </span>
+        </span>
         <button className="poll-btn" onClick={pollNow} disabled={polling}>
           {polling ? "Polling…" : "Poll now"}
         </button>

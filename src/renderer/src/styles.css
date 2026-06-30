@@ -139,6 +139,92 @@ body {
   background: rgba(70, 198, 192, 0.10);
 }
 
+/* Mode help affordance — circled "?" with an instrument-panel readout on hover/focus */
+.mode-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+}
+.mode-help__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font: 600 10px/1 var(--ui);
+  cursor: help;
+}
+.mode-help__btn:hover {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+.mode-help__tip {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  z-index: 30;
+  width: 256px;
+  display: grid;
+  row-gap: 9px;
+  padding: 11px 13px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 130ms ease, transform 130ms ease;
+}
+.mode-help:hover .mode-help__tip,
+.mode-help:focus-within .mode-help__tip {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.mode-help__row {
+  display: grid;
+  grid-template-columns: 7px 1fr;
+  column-gap: 10px;
+  align-items: start;
+}
+.mode-help__led {
+  width: 7px;
+  height: 7px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.mode-help__led--sup {
+  background: var(--accent);
+}
+.mode-help__led--auto {
+  background: var(--ok);
+}
+.mode-help__name {
+  display: block;
+  font: 600 11px/1.2 var(--mono);
+  letter-spacing: 0.02em;
+  color: var(--fg);
+}
+.mode-help__desc {
+  display: block;
+  margin-top: 3px;
+  font: 11px/1.45 var(--ui);
+  color: var(--muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mode-help__tip {
+    transition: none;
+  }
+}
+
 /* ---- Two-pane layout ---- */
 
 .app {

@@ -61,6 +61,14 @@ describe("App — mode switch", () => {
     fireEvent.click(screen.getByRole("button", { name: "Automated" }));
     await waitFor(() => expect(api.setMode).toHaveBeenCalledWith("automated"));
   });
+
+  it("renders the mode help affordance with an explanation of each mode", () => {
+    render(<App />);
+    expect(screen.getByRole("button", { name: /what the modes mean/i })).toBeInTheDocument();
+    // The explanation copy is always in the DOM; hover/focus only toggles CSS visibility.
+    expect(screen.getByText("Pauses watching for review requests.")).toBeInTheDocument();
+    expect(screen.getByText(/no approval step/i)).toBeInTheDocument();
+  });
 });
 
 describe("App — Show hidden", () => {
