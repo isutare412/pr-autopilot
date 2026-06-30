@@ -104,6 +104,16 @@ describe("App — poll interval", () => {
     await waitFor(() => expect(select().value).toBe("900"));
   });
 
+  it("shows a non-preset interval as the nearest preset without rewriting it", async () => {
+    // 420s has no preset; nearest is 300 (5m). It must display as 300 but never
+    // be silently persisted back — only an explicit user choice calls setPollInterval.
+    api.getSettings.mockResolvedValue({ operatingMode: "supervised", pollIntervalSec: 420 });
+    render(<App />);
+    const select = () => screen.getByRole("combobox", { name: /poll interval/i }) as HTMLSelectElement;
+    await waitFor(() => expect(select().value).toBe("300"));
+    expect(api.setPollInterval).not.toHaveBeenCalled();
+  });
+
   it("calls api.setPollInterval with the chosen seconds on change", async () => {
     render(<App />);
     const select = screen.getByRole("combobox", { name: /poll interval/i });
