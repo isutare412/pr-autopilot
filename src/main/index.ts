@@ -47,6 +47,7 @@ app.whenReady().then(async () => {
       nowIso, login, retentionDays: settings.retentionDays, concurrency: settings.genConcurrency,
       host: settings.githubHost, repoAllow: settings.repoAllow, repoDeny: settings.repoDeny,
       language: () => settings.commentLanguage,
+      effort: () => settings.effort,
     });
 
     const trayHandlers: TrayHandlers = {

@@ -1,13 +1,13 @@
 import { readFileSync, existsSync, rmSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { Draft, GeneratedDraft, Language } from "./schema";
+import { Draft, GeneratedDraft, Language, Effort } from "./schema";
 import { buildPrompt } from "./prompt";
 
 export { buildPrompt };
 
 export interface ClaudeSpawner {
-  run(args: { prompt: string; outFile: string; cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; settings: string; pluginDir: string; onActivity?: (labels: string[]) => void }): Promise<void>;
+  run(args: { prompt: string; outFile: string; cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; settings: string; pluginDir: string; effort: Effort; onActivity?: (labels: string[]) => void }): Promise<void>;
 }
 
 /**
@@ -19,15 +19,15 @@ export interface ClaudeSpawner {
  *   on claude's permission layer — it is enforced independently by the gh shim
  *   (PATH) and the PreToolUse hook (--settings), both of which still block
  *   mutating gh under skip-permissions.
- * - `--effort high`: the cockpit drafts at "high" regardless of the user's global
- *   effort level (this is a separate headless session).
+ * - `--effort <effort>`: the reasoning effort for this headless draft, taken from
+ *   the user's "Review effort" setting (default "high"). Passed in per-run.
  * - `--output-format stream-json --verbose`: emit a live event feed on stdout so
  *   the UI can show what the model is doing. The draft itself still arrives via
  *   the out-file, so this is purely additive — see streamEventToActivity.
  */
-export function claudeArgs(prompt: string, settings: string, pluginDir: string): string[] {
+export function claudeArgs(prompt: string, settings: string, pluginDir: string, effort: Effort): string[] {
   return ["-p", prompt, "--settings", settings, "--dangerously-skip-permissions",
-    "--effort", "high", "--output-format", "stream-json", "--verbose", "--plugin-dir", pluginDir];
+    "--effort", effort, "--output-format", "stream-json", "--verbose", "--plugin-dir", pluginDir];
 }
 
 const truncate = (s: unknown, n: number): string => { const t = String(s ?? ""); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
@@ -69,9 +69,9 @@ export function streamEventToActivity(line: string): string[] {
 
 export function realClaudeSpawner(): ClaudeSpawner {
   return {
-    run({ prompt, env, cwd, timeoutMs, settings, pluginDir, onActivity }) {
+    run({ prompt, env, cwd, timeoutMs, settings, pluginDir, effort, onActivity }) {
       return new Promise((resolve, reject) => {
-        const p = spawn("claude", claudeArgs(prompt, settings, pluginDir), {
+        const p = spawn("claude", claudeArgs(prompt, settings, pluginDir, effort), {
           cwd, env, stdio: ["ignore", "pipe", "pipe"],
         });
         let err = "";
@@ -107,7 +107,7 @@ export interface GenDeps {
 
 const TIMEOUT_MS = 8 * 60 * 1000;
 
-export async function generate(deps: GenDeps, input: { url: string; priorDraft?: Draft; feedback?: string; language: Language }, onActivity?: (labels: string[]) => void): Promise<Draft> {
+export async function generate(deps: GenDeps, input: { url: string; priorDraft?: Draft; feedback?: string; language: Language; effort: Effort }, onActivity?: (labels: string[]) => void): Promise<Draft> {
   const tmp = mkdtempSync(join(deps.dataDir, "gen-"));
   try {
     const outFile = join(tmp, "draft.json");
@@ -122,7 +122,7 @@ export async function generate(deps: GenDeps, input: { url: string; priorDraft?:
       if (existsSync(outFile)) rmSync(outFile);
       const prompt = buildPrompt({ url: input.url, outFile, priorDraft: input.priorDraft, feedback: input.feedback, language: input.language });
       try {
-        await deps.spawner.run({ prompt, outFile, cwd: tmp, env, timeoutMs: TIMEOUT_MS, settings: deps.guardSettings, pluginDir: deps.pluginDir, onActivity });
+        await deps.spawner.run({ prompt, outFile, cwd: tmp, env, timeoutMs: TIMEOUT_MS, settings: deps.guardSettings, pluginDir: deps.pluginDir, effort: input.effort, onActivity });
         if (!existsSync(outFile)) throw new Error("generator produced no out-file");
         return GeneratedDraft.parse(JSON.parse(readFileSync(outFile, "utf8")));
       } catch (e) {

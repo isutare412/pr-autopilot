@@ -6,10 +6,10 @@ import { buildPrompt, generate, claudeArgs, streamEventToActivity, ClaudeSpawner
 import type { Draft } from "../src/main/core/schema";
 
 describe("claudeArgs", () => {
-  it("bypasses prompts, drafts at high effort, streams events, and loads the bundled plugin", () => {
-    const args = claudeArgs("PROMPT", "/g.json", "/Resources/plugin");
+  it("bypasses prompts, drafts at the given effort, streams events, and loads the bundled plugin", () => {
+    const args = claudeArgs("PROMPT", "/g.json", "/Resources/plugin", "max");
     expect(args).toEqual(["-p", "PROMPT", "--settings", "/g.json", "--dangerously-skip-permissions",
-      "--effort", "high", "--output-format", "stream-json", "--verbose", "--plugin-dir", "/Resources/plugin"]);
+      "--effort", "max", "--output-format", "stream-json", "--verbose", "--plugin-dir", "/Resources/plugin"]);
   });
 });
 
@@ -72,18 +72,18 @@ describe("buildPrompt", () => {
 
 describe("generate", () => {
   it("returns a validated draft", async () => {
-    const d = await generate(deps(), { url: "http://pr/65", language: "en" });
+    const d = await generate(deps(), { url: "http://pr/65", language: "en", effort: "high" });
     expect(d.findings[0].ref).toBe("#1");
   });
 
   it("retries once on invalid JSON then succeeds", async () => {
     const d = { ...deps(), spawner: spawnerWriting((n) => (n === 0 ? "NOT JSON" : JSON.stringify(validDraft))) };
-    const out = await generate(d, { url: "http://pr/65", language: "en" });
+    const out = await generate(d, { url: "http://pr/65", language: "en", effort: "high" });
     expect(out.counts.nit).toBe(1);
   });
 
   it("throws after a second invalid output", async () => {
     const d = { ...deps(), spawner: spawnerWriting(() => "STILL NOT JSON") };
-    await expect(generate(d, { url: "http://pr/65", language: "en" })).rejects.toThrow();
+    await expect(generate(d, { url: "http://pr/65", language: "en", effort: "high" })).rejects.toThrow();
   });
 });

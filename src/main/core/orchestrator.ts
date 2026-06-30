@@ -3,12 +3,12 @@ import { JobQueue } from "./queue";
 import { Gh, SearchPr } from "./gh";
 import { execute } from "./executor";
 import { decideWork, authorAwaitingReview } from "./poller";
-import { PrRecord, Draft, Mode, Language, prKey } from "./schema";
+import { PrRecord, Draft, Mode, Language, Effort, prKey } from "./schema";
 
 export interface OrchestratorDeps {
   store: Store;
   gh: Gh;
-  generate: (input: { url: string; priorDraft?: Draft; feedback?: string; language: Language }, onActivity?: (labels: string[]) => void) => Promise<Draft>;
+  generate: (input: { url: string; priorDraft?: Draft; feedback?: string; language: Language; effort: Effort }, onActivity?: (labels: string[]) => void) => Promise<Draft>;
   notifier: { send: (title: string, message: string, url: string) => Promise<void> };
   nowIso: () => string;
   login: string;
@@ -16,6 +16,7 @@ export interface OrchestratorDeps {
   concurrency: number;
   host: string;
   language: () => Language;
+  effort: () => Effort;
   repoAllow?: string[];
   repoDeny?: string[];
 }
@@ -81,7 +82,7 @@ export class Orchestrator {
           const cur = this.store.get(key);
           if (cur && cur.state === "GENERATING") this.store.put({ ...cur, genActivity: steps.slice(-10) });
         };
-        const draft = await this.generate({ url: rec.url, priorDraft, feedback, language: this.d.language() }, onActivity);
+        const draft = await this.generate({ url: rec.url, priorDraft, feedback, language: this.d.language(), effort: this.d.effort() }, onActivity);
         const updated: PrRecord = {
           ...rec, draft, state: "NEEDS_REVIEW", draftVersion: rec.draftVersion + 1,
           headSha: sha || rec.headSha, generatedAt: this.d.nowIso(), updatedAt: this.d.nowIso(), error: null,

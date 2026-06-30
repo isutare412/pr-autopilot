@@ -28,6 +28,7 @@ function mkOrch() {
     concurrency: 2,
     host: "git.linecorp.com",
     language: () => "en",
+    effort: () => "high",
   });
   return { orch, store };
 }
@@ -90,10 +91,12 @@ describe("Orchestrator", () => {
       concurrency: 2,
       host: "git.linecorp.com",
       language: () => "en",
+      effort: () => "max",
     });
     await orch.runGeneration("git.linecorp.com/O/R#65", "first-review", "SHA1",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
     expect(capturedInput.language).toBe("en");
+    expect(capturedInput.effort).toBe("max");
   });
 });
 
