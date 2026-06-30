@@ -51,10 +51,13 @@ describe("App — Poll now", () => {
 
 describe("App — mode switch", () => {
   it("reflects the loaded mode and calls api.setMode on click", async () => {
-    api.getSettings.mockResolvedValue({ operatingMode: "supervised" });
+    api.getSettings.mockResolvedValue({ operatingMode: "disabled" });
     render(<App />);
+    // "disabled" differs from the useState default "supervised", so this can
+    // only be true if the api.getSettings() load actually drove state.
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Supervised" })).toHaveAttribute("aria-pressed", "true"));
+      expect(screen.getByRole("button", { name: "Disabled" })).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.getByRole("button", { name: "Supervised" })).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(screen.getByRole("button", { name: "Automated" }));
     await waitFor(() => expect(api.setMode).toHaveBeenCalledWith("automated"));
   });

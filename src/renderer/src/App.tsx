@@ -81,7 +81,7 @@ export function App() {
     loadList();
     api.getSettings().then((s: { operatingMode?: OperatingMode }) => {
       if (s?.operatingMode) setMode(s.operatingMode);
-    });
+    }).catch((e) => console.error("[getSettings]", e));
     // Subscribe once; use ref so these closures always read the current selection.
     const offMode = api.onModeChanged((m: string) => setMode(m as OperatingMode));
     const off1 = api.onRecordsChanged(() => {
