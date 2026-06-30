@@ -60,7 +60,7 @@ app.whenReady().then(async () => {
       toggleLogin: () => { settings = { ...settings, openAtLogin: !settings.openAtLogin }; saveSettings(dataDir, settings); applyLoginItem(settings.openAtLogin); refreshTray(() => store.list(), trayHandlers); trayHandlers.openAtLogin = settings.openAtLogin; },
       quit: () => { app.quit(); }, openAtLogin: settings.openAtLogin,
       getMode: () => settings.operatingMode,
-      setMode: (m) => { setOperatingMode(m); },
+      setMode: (m) => { setOperatingMode(m).catch((e) => console.error("[setMode]", e)); },
     };
 
     applyLoginItem(settings.openAtLogin);
@@ -85,7 +85,7 @@ app.whenReady().then(async () => {
     };
 
     async function setOperatingMode(mode: OperatingMode): Promise<void> {
-      if (mode === settings.operatingMode) { broadcastMode(); return; }
+      if (mode === settings.operatingMode) { refreshTray(() => store.list(), trayHandlers); broadcastMode(); return; }
       if (mode === "automated" && !settings.automatedConfirmed) {
         const { response } = await dialog.showMessageBox({
           type: "warning",
@@ -94,7 +94,7 @@ app.whenReady().then(async () => {
           message: "Enable Automated mode?",
           detail: "PR Autopilot will post reviews and approvals to your PRs automatically, with no per-PR confirmation.",
         });
-        if (response !== 1) { broadcastMode(); return; } // declined — keep current mode, resync surfaces
+        if (response !== 1) { refreshTray(() => store.list(), trayHandlers); broadcastMode(); return; } // declined — keep current mode, resync both surfaces
         settings = { ...settings, automatedConfirmed: true };
       }
       const wasDisabled = settings.operatingMode === "disabled";
