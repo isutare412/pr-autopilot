@@ -29,6 +29,7 @@ function mkOrch() {
     host: "git.linecorp.com",
     language: () => "en",
     effort: () => "high",
+    operatingMode: () => "supervised",
   });
   return { orch, store };
 }
@@ -92,6 +93,7 @@ describe("Orchestrator", () => {
       host: "git.linecorp.com",
       language: () => "en",
       effort: () => "max",
+      operatingMode: () => "supervised",
     });
     await orch.runGeneration("git.linecorp.com/O/R#65", "first-review", "SHA1",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
@@ -129,5 +131,69 @@ describe("recoverInFlight", () => {
   it("returns empty lists when the store has no records", () => {
     const { orch } = mkOrch();
     expect(orch.recoverInFlight()).toEqual({ regenerated: [], resumedPost: [] });
+  });
+});
+
+describe("Orchestrator — automated mode", () => {
+  it("auto-posts a fresh draft and suppresses the Draft-ready notification", async () => {
+    const { orch, store } = mkOrch();
+    (orch as any).d.operatingMode = () => "automated";
+    const postSpy = vi.fn();
+    (orch as any).enqueuePost = postSpy;
+    const notifier = (orch as any).d.notifier;
+
+    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review", "SHA1",
+      { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
+
+    const rec = store.get("git.linecorp.com/O/R#65")!;
+    expect(rec.draft).not.toBeNull();
+    expect(rec.state).toBe("POSTING");
+    expect(postSpy).toHaveBeenCalledWith("git.linecorp.com/O/R#65", true);
+    expect(notifier.send).not.toHaveBeenCalled();
+  });
+
+  it("supervised generation still notifies and does not post", async () => {
+    const { orch, store } = mkOrch();
+    const postSpy = vi.fn();
+    (orch as any).enqueuePost = postSpy;
+    const notifier = (orch as any).d.notifier;
+
+    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review", "SHA1",
+      { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
+
+    expect(store.get("git.linecorp.com/O/R#65")!.state).toBe("NEEDS_REVIEW");
+    expect(postSpy).not.toHaveBeenCalled();
+    expect(notifier.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("autoPostReady posts only NEEDS_REVIEW records", () => {
+    const { orch, store } = mkOrch();
+    const nr = seed(store, 10, "NEEDS_REVIEW");
+    seed(store, 11, "GENERATING");
+    seed(store, 12, "DONE");
+    const postSpy = vi.fn();
+    (orch as any).enqueuePost = postSpy;
+
+    const keys = orch.autoPostReady();
+
+    expect(keys).toEqual([nr]);
+    expect(postSpy).toHaveBeenCalledTimes(1);
+    expect(postSpy).toHaveBeenCalledWith(nr, true);
+    expect(store.get(nr)!.state).toBe("POSTING");
+  });
+
+  it("runPost notifies on an auto post but not on a manual post", async () => {
+    const { orch, store } = mkOrch();
+    const key = seed(store, 20, "NEEDS_REVIEW", { draft });
+    const notifier = (orch as any).d.notifier;
+
+    await orch.runPost(key, false);
+    expect(notifier.send).not.toHaveBeenCalled();
+    expect(store.get(key)!.state).toBe("DONE"); // empty draft → LGTM approve
+
+    const key2 = seed(store, 21, "NEEDS_REVIEW", { draft });
+    await orch.runPost(key2, true);
+    expect(notifier.send).toHaveBeenCalledTimes(1);
+    expect(notifier.send).toHaveBeenCalledWith("PR Autopilot", "Posted review: R #21", "http://x/O/R/pull/21");
   });
 });

@@ -49,6 +49,7 @@ app.whenReady().then(async () => {
       host: settings.githubHost, repoAllow: settings.repoAllow, repoDeny: settings.repoDeny,
       language: () => settings.commentLanguage,
       effort: () => settings.effort,
+      operatingMode: () => settings.operatingMode,
     });
 
     const trayHandlers: TrayHandlers = {

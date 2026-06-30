@@ -3,7 +3,7 @@ import { JobQueue } from "./queue";
 import { Gh, SearchPr } from "./gh";
 import { execute } from "./executor";
 import { decideWork, authorAwaitingReview } from "./poller";
-import { PrRecord, Draft, Mode, Language, Effort, prKey } from "./schema";
+import { PrRecord, Draft, Mode, Language, Effort, OperatingMode, prKey } from "./schema";
 
 export interface OrchestratorDeps {
   store: Store;
@@ -17,6 +17,7 @@ export interface OrchestratorDeps {
   host: string;
   language: () => Language;
   effort: () => Effort;
+  operatingMode: () => OperatingMode;
   repoAllow?: string[];
   repoDeny?: string[];
 }
@@ -45,8 +46,8 @@ export class Orchestrator {
     });
   };
 
-  enqueuePost = (key: string) => {
-    this.postQueue.submit(key, () => this.runPost(key));
+  enqueuePost = (key: string, auto = false) => {
+    this.postQueue.submit(key, () => this.runPost(key, auto));
   };
 
   async runGeneration(key: string, mode: Mode, sha: string, pr: SearchPr, feedback?: string): Promise<void> {
@@ -88,14 +89,38 @@ export class Orchestrator {
           headSha: sha || rec.headSha, generatedAt: this.d.nowIso(), updatedAt: this.d.nowIso(), error: null,
         };
         this.store.put(updated);
-        await this.d.notifier.send("PR Autopilot", `Draft ready: ${rec.repo} #${rec.number}`, rec.url);
+        if (this.d.operatingMode() === "automated") {
+          // No human gate: flip to POSTING and post via the same path a manual approve uses.
+          this.autoPost(key);
+        } else {
+          await this.d.notifier.send("PR Autopilot", `Draft ready: ${rec.repo} #${rec.number}`, rec.url);
+        }
       } catch (e) {
         this.store.put({ ...rec, state: "ERROR", error: { step: "generate", message: String(e) }, updatedAt: this.d.nowIso() });
       }
     });
   }
 
-  async runPost(key: string): Promise<void> {
+  /** Flip a NEEDS_REVIEW record to POSTING and enqueue an automatic post.
+   *  Writes the store directly (no withLock): callers are already serialized per key. */
+  private autoPost(key: string): void {
+    const rec = this.store.get(key);
+    if (!rec) return;
+    this.store.put({ ...rec, state: "POSTING", updatedAt: this.d.nowIso() });
+    this.enqueuePost(key, true);
+  }
+
+  /** Post every draft currently awaiting review. Called when switching into
+   *  Automated so an existing backlog does not sit forever. Returns the keys. */
+  autoPostReady(): string[] {
+    const keys: string[] = [];
+    for (const rec of this.store.list()) {
+      if (rec.state === "NEEDS_REVIEW") { this.autoPost(rec.key); keys.push(rec.key); }
+    }
+    return keys;
+  }
+
+  async runPost(key: string, auto = false): Promise<void> {
     await this.store.withLock(key, async () => {
       const rec = this.store.get(key);
       if (!rec || !rec.draft) return;
@@ -104,6 +129,7 @@ export class Orchestrator {
           (p) => { const cur = this.store.get(key); if (cur) this.store.put({ ...cur, postProgress: p }); });
         this.store.put(updated);
         if (updated.state === "STALE") this.enqueueGen(key);
+        else if (auto) await this.d.notifier.send("PR Autopilot", `Posted review: ${rec.repo} #${rec.number}`, rec.url);
       } catch (e) {
         this.store.put({ ...rec, state: "ERROR", error: { step: "post", message: String(e) }, updatedAt: this.d.nowIso() });
       }
