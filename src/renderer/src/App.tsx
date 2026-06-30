@@ -4,12 +4,18 @@ import type { UiRecord, UiRow } from "./types";
 import { QueueRow } from "./components/QueueRow";
 import { Detail } from "./components/Detail";
 
+type OperatingMode = "disabled" | "supervised" | "automated";
+const MODE_LABEL: Record<OperatingMode, string> = {
+  disabled: "Disabled", supervised: "Supervised", automated: "Automated",
+};
+
 export function App() {
   const [rows, setRows] = useState<UiRow[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [record, setRecord] = useState<UiRecord | null>(null);
   const [polling, setPolling] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
+  const [mode, setMode] = useState<OperatingMode>("supervised");
 
   // Ref so stable subscriptions (bound once on mount) can read the current key
   // without re-binding whenever selectedKey state changes.
@@ -73,13 +79,18 @@ export function App() {
 
   useEffect(() => {
     loadList();
+    api.getSettings().then((s: { operatingMode?: OperatingMode }) => {
+      if (s?.operatingMode) setMode(s.operatingMode);
+    });
     // Subscribe once; use ref so these closures always read the current selection.
+    const offMode = api.onModeChanged((m: string) => setMode(m as OperatingMode));
     const off1 = api.onRecordsChanged(() => {
       loadList();
       if (selectedKeyRef.current) loadDetail(selectedKeyRef.current);
     });
     const off2 = api.onFocusPr((k) => loadDetail(k));
     return () => {
+      offMode();
       off1();
       off2();
     };
@@ -94,6 +105,18 @@ export function App() {
       <header className="topbar">
         <span className="brand">PR&nbsp;AUTOPILOT</span>
         <span className="tagline">review console</span>
+        <div className="mode-switch" role="group" aria-label="Operating mode">
+          {(["disabled", "supervised", "automated"] as OperatingMode[]).map((m) => (
+            <button
+              key={m}
+              className="mode-seg"
+              aria-pressed={mode === m}
+              onClick={() => api.setMode(m)}
+            >
+              {MODE_LABEL[m]}
+            </button>
+          ))}
+        </div>
         <button className="poll-btn" onClick={pollNow} disabled={polling}>
           {polling ? "Polling…" : "Poll now"}
         </button>

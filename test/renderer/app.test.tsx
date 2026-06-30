@@ -14,6 +14,9 @@ const api = vi.hoisted(() => ({
   pollNow: vi.fn(async () => {}),
   onRecordsChanged: vi.fn(() => () => {}),
   onFocusPr: vi.fn(() => () => {}),
+  getSettings: vi.fn(async () => ({ operatingMode: "supervised" })),
+  setMode: vi.fn(async () => {}),
+  onModeChanged: vi.fn(() => () => {}),
 }));
 vi.mock("../../src/renderer/src/api", () => ({ api }));
 
@@ -43,6 +46,17 @@ describe("App — Poll now", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /polling/i })).toBeDisabled());
     resolvePoll();
     await waitFor(() => expect(screen.getByRole("button", { name: /poll now/i })).not.toBeDisabled());
+  });
+});
+
+describe("App — mode switch", () => {
+  it("reflects the loaded mode and calls api.setMode on click", async () => {
+    api.getSettings.mockResolvedValue({ operatingMode: "supervised" });
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Supervised" })).toHaveAttribute("aria-pressed", "true"));
+    fireEvent.click(screen.getByRole("button", { name: "Automated" }));
+    await waitFor(() => expect(api.setMode).toHaveBeenCalledWith("automated"));
   });
 });
 

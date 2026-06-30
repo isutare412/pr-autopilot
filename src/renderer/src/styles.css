@@ -79,7 +79,6 @@ body {
 }
 
 .poll-btn {
-  margin-left: auto;
   font: 600 11px/1 var(--ui);
   color: var(--accent);
   background: transparent;
@@ -112,6 +111,32 @@ body {
 .hidden-toggle[aria-pressed="true"] {
   color: var(--accent);
   border-color: var(--accent-dim);
+}
+
+.mode-switch {
+  margin-left: auto;
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.mode-seg {
+  font: 600 11px/1 var(--ui);
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  padding: 6px 11px;
+  cursor: pointer;
+}
+.mode-seg + .mode-seg {
+  border-left: 1px solid var(--line);
+}
+.mode-seg:hover {
+  color: var(--fg);
+}
+.mode-seg[aria-pressed="true"] {
+  color: var(--accent);
+  background: rgba(70, 198, 192, 0.10);
 }
 
 /* ---- Two-pane layout ---- */
