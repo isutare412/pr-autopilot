@@ -37,4 +37,30 @@ describe("icon assets", () => {
       to: "build/trayTemplate@2x.png",
     });
   });
+
+  it("disabled tray templates are 18x18 and 36x36 with alpha", () => {
+    const a = png("build/trayTemplate-disabled.png");
+    expect([a.width, a.height]).toEqual([18, 18]);
+    expect(hasAlpha(a.colorType)).toBe(true);
+    const b = png("build/trayTemplate-disabled@2x.png");
+    expect([b.width, b.height]).toEqual([36, 36]);
+    expect(hasAlpha(b.colorType)).toBe(true);
+  });
+
+  it("automated tray templates are 18x18 and 36x36 with alpha", () => {
+    const a = png("build/trayTemplate-automated.png");
+    expect([a.width, a.height]).toEqual([18, 18]);
+    expect(hasAlpha(a.colorType)).toBe(true);
+    const b = png("build/trayTemplate-automated@2x.png");
+    expect([b.width, b.height]).toEqual([36, 36]);
+    expect(hasAlpha(b.colorType)).toBe(true);
+  });
+
+  it("bundles the mode tray templates as extraResources", () => {
+    const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+    for (const f of ["trayTemplate-disabled.png", "trayTemplate-disabled@2x.png",
+                     "trayTemplate-automated.png", "trayTemplate-automated@2x.png"]) {
+      expect(pkg.build.extraResources).toContainEqual({ from: `build/${f}`, to: `build/${f}` });
+    }
+  });
 });

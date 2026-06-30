@@ -12,6 +12,12 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 rsvg-convert -w 18 -h 18 "$BUILD/trayTemplate.svg" -o "$BUILD/trayTemplate.png"
 rsvg-convert -w 36 -h 36 "$BUILD/trayTemplate.svg" -o "$BUILD/trayTemplate@2x.png"
 
+# --- Mode-variant menu-bar templates ---
+for v in disabled automated; do
+  rsvg-convert -w 18 -h 18 "$BUILD/trayTemplate-$v.svg" -o "$BUILD/trayTemplate-$v.png"
+  rsvg-convert -w 36 -h 36 "$BUILD/trayTemplate-$v.svg" -o "$BUILD/trayTemplate-$v@2x.png"
+done
+
 # --- App icon: Apple superellipse (n=5) mask + 80% safe-area inset ---
 # 1) emit a superellipse path SVG for an 824px body
 node -e 'const n=5,S=824,c=S/2,p=[];for(let i=0;i<=1440;i++){const t=i/1440*2*Math.PI,ct=Math.cos(t),st=Math.sin(t);p.push((c+c*Math.sign(ct)*Math.pow(Math.abs(ct),2/n)).toFixed(2)+","+(c+c*Math.sign(st)*Math.pow(Math.abs(st),2/n)).toFixed(2));}require("fs").writeFileSync(process.argv[1],`<svg xmlns="http://www.w3.org/2000/svg" width="824" height="824" viewBox="0 0 824 824"><path d="M${p.join(" L")} Z" fill="#fff"/></svg>`);' "$TMP/mask.svg"
