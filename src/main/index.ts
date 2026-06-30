@@ -1,10 +1,11 @@
-import { app, dialog } from "electron";
+import { app, dialog, BrowserWindow } from "electron";
 import { join } from "node:path";
 import { Store } from "./core/store";
 import { Gh, realGhRunner } from "./core/gh";
 import { realClaudeSpawner, generate as genFn } from "./core/generator";
 import { Orchestrator } from "./core/orchestrator";
 import { loadSettings, saveSettings, Settings } from "./settings";
+import { OperatingMode } from "./core/schema";
 import { electronNotifier } from "./notify-electron";
 import { resolvePath, expandTilde, getPluginDir, getDataDir } from "./paths";
 import { registerIpc, watchStoreForChanges } from "./ipc";
@@ -58,6 +59,8 @@ app.whenReady().then(async () => {
       openPreferences: () => showPreferences(),
       toggleLogin: () => { settings = { ...settings, openAtLogin: !settings.openAtLogin }; saveSettings(dataDir, settings); applyLoginItem(settings.openAtLogin); refreshTray(() => store.list(), trayHandlers); trayHandlers.openAtLogin = settings.openAtLogin; },
       quit: () => { app.quit(); }, openAtLogin: settings.openAtLogin,
+      getMode: () => settings.operatingMode,
+      setMode: (m) => { setOperatingMode(m); },
     };
 
     applyLoginItem(settings.openAtLogin);
@@ -67,20 +70,53 @@ app.whenReady().then(async () => {
     // recover + poll loop + prune (as pr-cockpit did)
     try { orch.recoverInFlight(); } catch (e) { console.error("[recover]", e); }
     const poll = () => orch.runPoll().then(() => refreshTray(() => store.list(), trayHandlers)).catch((e) => console.error("[poll]", e));
-    poll();
-    let pollTimer = setInterval(poll, settings.pollIntervalSec * 1000);
+    let pollTimer: NodeJS.Timeout | null = null;
+    const restartPolling = () => {
+      if (pollTimer) clearInterval(pollTimer);
+      // Disabled stops the cron; in-flight queues drain on their own.
+      pollTimer = settings.operatingMode === "disabled" ? null : setInterval(poll, settings.pollIntervalSec * 1000);
+    };
+    if (settings.operatingMode !== "disabled") poll();
+    restartPolling();
     setInterval(() => orch.pruneNow(), 24 * 60 * 60 * 1000);
+
+    const broadcastMode = () => {
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.send("mode-changed", settings.operatingMode);
+    };
+
+    async function setOperatingMode(mode: OperatingMode): Promise<void> {
+      if (mode === settings.operatingMode) { broadcastMode(); return; }
+      if (mode === "automated" && !settings.automatedConfirmed) {
+        const { response } = await dialog.showMessageBox({
+          type: "warning",
+          buttons: ["Cancel", "Enable Automated"],
+          defaultId: 1, cancelId: 0,
+          message: "Enable Automated mode?",
+          detail: "PR Autopilot will post reviews and approvals to your PRs automatically, with no per-PR confirmation.",
+        });
+        if (response !== 1) { broadcastMode(); return; } // declined — keep current mode, resync surfaces
+        settings = { ...settings, automatedConfirmed: true };
+      }
+      const wasDisabled = settings.operatingMode === "disabled";
+      settings = { ...settings, operatingMode: mode };
+      saveSettings(dataDir, settings);
+      restartPolling();
+      if (wasDisabled && mode !== "disabled") poll();
+      if (mode === "automated") orch.autoPostReady();
+      refreshTray(() => store.list(), trayHandlers);
+      broadcastMode();
+    }
 
     registerIpc({
       store, orch, dataDir, nowIso,
       getSettings: () => settings,
       setSettings: (s: Settings) => {
         const parsed = Settings.parse(s);
-        settings = parsed;
-        saveSettings(dataDir, parsed);
-        applyLoginItem(parsed.openAtLogin);
-        clearInterval(pollTimer);
-        pollTimer = setInterval(poll, parsed.pollIntervalSec * 1000);
+        // Preserve the live operating-mode controls — the prefs form does not own them.
+        settings = { ...parsed, operatingMode: settings.operatingMode, automatedConfirmed: settings.automatedConfirmed };
+        saveSettings(dataDir, settings);
+        applyLoginItem(settings.openAtLogin);
+        restartPolling();
       },
     });
     watchStoreForChanges(dataDir);

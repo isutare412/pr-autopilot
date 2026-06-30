@@ -2,8 +2,8 @@ import { vi } from "vitest";
 vi.mock("electron", () => ({ Tray: class {}, Menu: {}, nativeImage: {} }));
 
 import { describe, it, expect } from "vitest";
-import { buildTrayMenu } from "../src/main/tray";
-import type { PrRecord } from "../src/main/core/schema";
+import { buildTrayMenu, trayIconFile } from "../src/main/tray";
+import type { PrRecord, OperatingMode } from "../src/main/core/schema";
 
 const rec = (over: Partial<PrRecord>): PrRecord => ({
   key: "h/o/r#1", host: "h", owner: "o", repo: "r", number: 1, url: "u", title: "T",
@@ -15,6 +15,7 @@ const rec = (over: Partial<PrRecord>): PrRecord => ({
 const handlers = {
   openPr: vi.fn(), openMain: vi.fn(), pollNow: vi.fn(), openPreferences: vi.fn(),
   toggleLogin: vi.fn(), quit: vi.fn(), openAtLogin: true,
+  getMode: () => "supervised" as OperatingMode, setMode: vi.fn(),
 };
 
 describe("buildTrayMenu", () => {
@@ -48,5 +49,33 @@ describe("buildTrayMenu", () => {
     const item = menu.find((m) => m.label === "#3 r3 — NEEDS_REVIEW")!;
     (item.click as () => void)();
     expect(handlers.openPr).toHaveBeenCalledWith("k-nr");
+  });
+});
+
+describe("buildTrayMenu — mode controls", () => {
+  it("renders three mode radios with the current mode checked", () => {
+    const h = { ...handlers, getMode: () => "automated" as OperatingMode };
+    const menu = buildTrayMenu([], h);
+    const item = (s: string) => menu.find((m) => m.label === s);
+    expect(item("Disabled")?.type).toBe("radio");
+    expect(item("Automated")?.checked).toBe(true);
+    expect(item("Supervised")?.checked).toBe(false);
+    expect(item("Disabled")?.checked).toBe(false);
+  });
+
+  it("wires a mode radio click to setMode", () => {
+    const setMode = vi.fn();
+    const h = { ...handlers, getMode: () => "supervised" as OperatingMode, setMode };
+    const menu = buildTrayMenu([], h);
+    (menu.find((m) => m.label === "Disabled")!.click as () => void)();
+    expect(setMode).toHaveBeenCalledWith("disabled");
+  });
+});
+
+describe("trayIconFile", () => {
+  it("maps each mode to its template png", () => {
+    expect(trayIconFile("disabled")).toBe("trayTemplate-disabled.png");
+    expect(trayIconFile("supervised")).toBe("trayTemplate.png");
+    expect(trayIconFile("automated")).toBe("trayTemplate-automated.png");
   });
 });

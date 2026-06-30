@@ -1,12 +1,13 @@
 import { Tray, Menu, nativeImage } from "electron";
 import { join } from "node:path";
 import type { MenuItemConstructorOptions } from "electron";
-import type { PrRecord } from "./core/schema";
+import type { PrRecord, OperatingMode } from "./core/schema";
 import { getPluginDir } from "./paths";
 
 export interface TrayHandlers {
   openPr(key: string): void; openMain(): void; pollNow(): void;
   openPreferences(): void; toggleLogin(): void; quit(): void; openAtLogin: boolean;
+  getMode(): OperatingMode; setMode(m: OperatingMode): void;
 }
 
 const RANK: Record<string, number> = {
@@ -14,13 +15,38 @@ const RANK: Record<string, number> = {
   STALE: 4, ERROR: 5, DISCOVERED: 6, DONE: 7,
 };
 
+const MODE_LABEL: Record<OperatingMode, string> = {
+  disabled: "Disabled", supervised: "Supervised", automated: "Automated",
+};
+
+export function trayIconFile(mode: OperatingMode): string {
+  return mode === "disabled" ? "trayTemplate-disabled.png"
+    : mode === "automated" ? "trayTemplate-automated.png"
+    : "trayTemplate.png";
+}
+
+function loadTrayIcon(mode: OperatingMode) {
+  const icon = nativeImage.createFromPath(join(getPluginDir(), "..", "build", trayIconFile(mode)));
+  icon.setTemplateImage(true);
+  return icon.isEmpty() ? nativeImage.createEmpty() : icon;
+}
+
 export function buildTrayMenu(records: PrRecord[], h: TrayHandlers): MenuItemConstructorOptions[] {
+  const mode = h.getMode();
+  const modeItems: MenuItemConstructorOptions[] = [
+    { label: "Mode", enabled: false },
+    { label: "Disabled", type: "radio", checked: mode === "disabled", click: () => h.setMode("disabled") },
+    { label: "Supervised", type: "radio", checked: mode === "supervised", click: () => h.setMode("supervised") },
+    { label: "Automated", type: "radio", checked: mode === "automated", click: () => h.setMode("automated") },
+    { type: "separator" },
+  ];
   const visible = records.filter((r) => r.state !== "DISMISSED");
   visible.sort((a, b) => (RANK[a.state] ?? 9) - (RANK[b.state] ?? 9) || a.repo.localeCompare(b.repo));
   const prItems: MenuItemConstructorOptions[] = visible.length
     ? visible.map((r) => ({ label: `#${r.number} ${r.repo} — ${r.state}`, click: () => h.openPr(r.key) }))
     : [{ label: "No PRs in queue", enabled: false }];
   return [
+    ...modeItems,
     ...prItems,
     { type: "separator" },
     { label: "Open PR Autopilot", click: () => h.openMain() },
@@ -35,15 +61,16 @@ export function buildTrayMenu(records: PrRecord[], h: TrayHandlers): MenuItemCon
 let tray: Tray | null = null;
 
 export function createTray(getRecords: () => PrRecord[], h: TrayHandlers): Tray {
-  const icon = nativeImage.createFromPath(join(getPluginDir(), "..", "build", "trayTemplate.png"));
-  icon.setTemplateImage(true);
-  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
-  tray.setToolTip("PR Autopilot");
+  tray = new Tray(loadTrayIcon(h.getMode()));
+  tray.setToolTip(`PR Autopilot — ${MODE_LABEL[h.getMode()]}`);
   const refresh = () => tray!.setContextMenu(Menu.buildFromTemplate(buildTrayMenu(getRecords(), h)));
   refresh();
   return tray;
 }
 
 export function refreshTray(getRecords: () => PrRecord[], h: TrayHandlers): void {
-  if (tray) tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenu(getRecords(), h)));
+  if (!tray) return;
+  tray.setImage(loadTrayIcon(h.getMode()));
+  tray.setToolTip(`PR Autopilot — ${MODE_LABEL[h.getMode()]}`);
+  tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenu(getRecords(), h)));
 }
