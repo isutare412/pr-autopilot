@@ -18,13 +18,15 @@ typecheck: ## Typecheck main + renderer
 	@pnpm typecheck
 
 ##@ Build & package
-.PHONY: build dist clean
+.PHONY: build dist clean icons
 build: ## Build main/preload/renderer
 	@pnpm build
 dist: ## Package the macOS .app
 	@pnpm dist
 clean: ## Remove build outputs
 	@rm -rf out dist
+icons: ## Regenerate app + tray icons from build/ masters (needs magick, rsvg-convert)
+	@bash scripts/make-icons.sh
 
 ##@ Install & run
 .PHONY: install open skills logs

@@ -62,7 +62,10 @@ build/
     guard.d.mts      type declarations for guard.mjs
   guard.settings.json  Claude Code settings injected for the generation subprocess
   entitlements.mac.plist
-  trayTemplate.png
+  icon-master.png        app-icon source art (full-bleed steering wheel)
+  icon.png               macOS app icon — 1024² superellipse RGBA (regen: `make icons`)
+  trayTemplate.svg       menu-bar glyph source (style-A wheel)
+  trayTemplate.png       menu-bar template 18×18 (+ trayTemplate@2x.png 36×36) (regen: `make icons`)
 
 test/                  vitest test suite (mirrors src/main/core/ + renderer)
 ```
