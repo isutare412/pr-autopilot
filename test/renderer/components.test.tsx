@@ -128,6 +128,48 @@ describe("Detail empty state", () => {
   });
 });
 
+describe("Detail — View on GitHub link", () => {
+  const noop = () => {};
+  const rec = (over = {}) =>
+    ({
+      key: "k",
+      host: "github.com",
+      owner: "owner",
+      repo: "repo",
+      number: 1,
+      url: "https://github.com/owner/repo/pull/1",
+      title: "Test PR",
+      author: "author",
+      baseRef: "main",
+      state: "NEEDS_REVIEW",
+      mode: "first-review",
+      headSha: "",
+      draftVersion: 1,
+      draft: { overallEn: "looks good", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] },
+      feedbackHistory: [],
+      postResult: null,
+      postProgress: null,
+      error: null,
+      discoveredAt: "",
+      generatedAt: null,
+      updatedAt: "",
+      doneAt: null,
+      ...over,
+    }) as import("../../src/renderer/src/types").UiRecord;
+
+  it("links the draft header to the PR url, opening in a new tab", () => {
+    render(<Detail record={rec()} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />);
+    const link = screen.getByRole("link", { name: /view on github/i });
+    expect(link).toHaveAttribute("href", "https://github.com/owner/repo/pull/1");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("shows the link while a review is still generating", () => {
+    render(<Detail record={rec({ state: "GENERATING", draft: null })} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />);
+    expect(screen.getByRole("link", { name: /view on github/i })).toHaveAttribute("href", "https://github.com/owner/repo/pull/1");
+  });
+});
+
 describe("Detail error-branch actions", () => {
   const noop = () => {};
   const errRecord = (state: string) => ({

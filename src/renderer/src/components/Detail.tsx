@@ -28,11 +28,19 @@ function mdLite(s: string): string {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
-function PrHead({ number, title }: { number: number; title: string }) {
+function PrHead({ number, title, url }: { number: number; title: string; url: string }) {
   return (
     <div className="pr-head">
       <span className="pr-num">#{number}</span>
       <span className="pr-title">{title}</span>
+      <a className="pr-link" href={url} target="_blank" rel="noreferrer">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+          <polyline points="15 3 21 3 21 9" />
+          <line x1="10" y1="14" x2="21" y2="3" />
+        </svg>
+        View on GitHub
+      </a>
     </div>
   );
 }
@@ -59,7 +67,7 @@ export function Detail({ record, onToggle, onEdit, onApprove, onDismiss, onResto
   if (record.state === "GENERATING") {
     return (
       <>
-        <PrHead number={record.number} title={record.title} />
+        <PrHead number={record.number} title={record.title} url={record.url} />
         <GeneratingPane record={record} />
       </>
     );
@@ -69,7 +77,7 @@ export function Detail({ record, onToggle, onEdit, onApprove, onDismiss, onResto
     const e = record.error;
     return (
       <>
-        <PrHead number={record.number} title={record.title} />
+        <PrHead number={record.number} title={record.title} url={record.url} />
         {e ? (
           <div className="error-box">
             <div className="error-head">
@@ -96,7 +104,7 @@ export function Detail({ record, onToggle, onEdit, onApprove, onDismiss, onResto
 
   return (
     <>
-      <PrHead number={record.number} title={record.title} />
+      <PrHead number={record.number} title={record.title} url={record.url} />
       <div
         className="overall"
         dangerouslySetInnerHTML={{ __html: mdLite(draft.overallEn) }}

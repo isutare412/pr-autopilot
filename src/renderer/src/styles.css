@@ -579,6 +579,29 @@ body {
   color: var(--fg);
 }
 
+.pr-link {
+  flex: none;
+  margin-left: auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 11px/1 var(--ui);
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.12s ease;
+}
+
+.pr-link:hover {
+  color: var(--accent);
+}
+
+.pr-link svg {
+  flex: none;
+}
+
 /* ---- Live GENERATING feed — the one animated, memorable moment ---- */
 
 .gen {
