@@ -95,3 +95,42 @@ describe("Detail empty state", () => {
     expect(screen.getByText(/Pick a pull request from the queue/)).toBeInTheDocument();
   });
 });
+
+describe("Detail error-branch actions", () => {
+  const noop = () => {};
+  const errRecord = (state: string) => ({
+    key: "k",
+    host: "github.com",
+    owner: "owner",
+    repo: "repo",
+    number: 1,
+    url: "https://github.com/owner/repo/pull/1",
+    title: "Test PR",
+    author: "author",
+    baseRef: "main",
+    state,
+    mode: "first-review",
+    headSha: "",
+    draftVersion: 0,
+    draft: null,
+    feedbackHistory: [],
+    postResult: null,
+    postProgress: null,
+    error: { step: "generate", message: "boom" },
+    discoveredAt: "",
+    generatedAt: null,
+    updatedAt: "",
+    doneAt: null,
+  } as import("../../src/renderer/src/types").UiRecord);
+
+  it("shows Dismiss for an errored record and Restore when dismissed", () => {
+    const { rerender } = render(
+      <Detail record={errRecord("ERROR")} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
+    );
+    expect(screen.getByRole("button", { name: /^dismiss$/i })).toBeInTheDocument();
+    rerender(
+      <Detail record={errRecord("DISMISSED")} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
+    );
+    expect(screen.getByRole("button", { name: /^restore$/i })).toBeInTheDocument();
+  });
+});

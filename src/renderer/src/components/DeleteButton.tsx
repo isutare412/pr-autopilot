@@ -18,7 +18,7 @@ export function DeleteButton({ onDelete }: Props) {
   return (
     <span className="del-confirm">
       <span className="del-confirm__q">Delete?</span>
-      <button type="button" className="del-btn del-btn--danger" onClick={onDelete}>
+      <button type="button" className="del-btn del-btn--danger" onClick={() => { onDelete(); setConfirming(false); }}>
         Confirm
       </button>
       <button type="button" className="del-btn" onClick={() => setConfirming(false)}>
