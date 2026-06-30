@@ -10,13 +10,26 @@ describe("PrefsForm", () => {
     const spy = vi.fn();
     render(<PrefsForm settings={DEFAULT_SETTINGS} onSave={spy} />);
 
-    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    const select = screen.getByRole("combobox", { name: /comment language/i }) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "ja" } });
 
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
     expect(spy).toHaveBeenCalledOnce();
     expect(spy.mock.calls[0][0]).toMatchObject({ commentLanguage: "ja" });
+  });
+
+  it("calls onSave with updated effort when Save is clicked", () => {
+    const spy = vi.fn();
+    render(<PrefsForm settings={DEFAULT_SETTINGS} onSave={spy} />);
+
+    const effort = screen.getByRole("combobox", { name: /review effort/i }) as HTMLSelectElement;
+    fireEvent.change(effort, { target: { value: "max" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy.mock.calls[0][0]).toMatchObject({ effort: "max" });
   });
 
   it("preserves repoAllow and repoDeny in the saved object", () => {

@@ -50,6 +50,24 @@ export function PrefsForm({ settings, onSave }: Props) {
         </div>
 
         <div className="prefs-row">
+          <label htmlFor="effort">Review effort</label>
+          <select
+            id="effort"
+            className="edit prefs-select"
+            value={state.effort}
+            onChange={(e) =>
+              set("effort", e.target.value as Settings["effort"])
+            }
+          >
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="xhigh">X-High</option>
+            <option value="max">Max</option>
+          </select>
+        </div>
+
+        <div className="prefs-row">
           <label htmlFor="pollIntervalSec">Poll every (seconds)</label>
           <input
             id="pollIntervalSec"
