@@ -15,9 +15,11 @@ const api = vi.hoisted(() => ({
   openPreferences: vi.fn(),
   onRecordsChanged: vi.fn(() => () => {}),
   onFocusPr: vi.fn(() => () => {}),
-  getSettings: vi.fn(async () => ({ operatingMode: "supervised" })),
+  getSettings: vi.fn(async () => ({ operatingMode: "supervised", pollIntervalSec: 600 })),
   setMode: vi.fn(async () => {}),
   onModeChanged: vi.fn(() => () => {}),
+  setPollInterval: vi.fn(async () => {}),
+  onPollIntervalChanged: vi.fn((_fn: (sec: number) => void) => (() => {})),
 }));
 vi.mock("../../src/renderer/src/api", () => ({ api }));
 
@@ -52,7 +54,7 @@ describe("App — Poll now", () => {
 
 describe("App — mode switch", () => {
   it("reflects the loaded mode and calls api.setMode on click", async () => {
-    api.getSettings.mockResolvedValue({ operatingMode: "disabled" });
+    api.getSettings.mockResolvedValue({ operatingMode: "disabled", pollIntervalSec: 600 });
     render(<App />);
     // "disabled" differs from the useState default "supervised", so this can
     // only be true if the api.getSettings() load actually drove state.
@@ -91,5 +93,31 @@ describe("App — settings gear", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /settings/i }));
     await waitFor(() => expect(api.openPreferences).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("App — poll interval", () => {
+  it("reflects the loaded pollIntervalSec in the dropdown", async () => {
+    api.getSettings.mockResolvedValue({ operatingMode: "supervised", pollIntervalSec: 900 });
+    render(<App />);
+    const select = () => screen.getByRole("combobox", { name: /poll interval/i }) as HTMLSelectElement;
+    await waitFor(() => expect(select().value).toBe("900"));
+  });
+
+  it("calls api.setPollInterval with the chosen seconds on change", async () => {
+    render(<App />);
+    const select = screen.getByRole("combobox", { name: /poll interval/i });
+    fireEvent.change(select, { target: { value: "60" } });
+    await waitFor(() => expect(api.setPollInterval).toHaveBeenCalledWith(60));
+  });
+
+  it("updates the dropdown when a poll-interval-changed broadcast arrives", async () => {
+    let cb: ((sec: number) => void) | null = null;
+    api.onPollIntervalChanged.mockImplementation((fn: (sec: number) => void) => { cb = fn; return () => {}; });
+    render(<App />);
+    const select = () => screen.getByRole("combobox", { name: /poll interval/i }) as HTMLSelectElement;
+    await waitFor(() => expect(cb).not.toBeNull());
+    cb!(1800);
+    await waitFor(() => expect(select().value).toBe("1800"));
   });
 });

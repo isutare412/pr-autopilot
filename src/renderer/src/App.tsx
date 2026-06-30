@@ -9,6 +9,17 @@ const MODE_LABEL: Record<OperatingMode, string> = {
   disabled: "Disabled", supervised: "Supervised", automated: "Automated",
 };
 
+const INTERVAL_PRESETS = [60, 300, 600, 900, 1800, 3600] as const;
+const INTERVAL_LABEL: Record<number, string> = {
+  60: "1m", 300: "5m", 600: "10m", 900: "15m", 1800: "30m", 3600: "1h",
+};
+function nearestPreset(sec: number): number {
+  return INTERVAL_PRESETS.reduce(
+    (best, p) => (Math.abs(p - sec) < Math.abs(best - sec) ? p : best),
+    INTERVAL_PRESETS[0],
+  );
+}
+
 export function App() {
   const [rows, setRows] = useState<UiRow[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -16,6 +27,7 @@ export function App() {
   const [polling, setPolling] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [mode, setMode] = useState<OperatingMode>("supervised");
+  const [pollIntervalSec, setPollIntervalSec] = useState(600);
 
   // Ref so stable subscriptions (bound once on mount) can read the current key
   // without re-binding whenever selectedKey state changes.
@@ -79,11 +91,13 @@ export function App() {
 
   useEffect(() => {
     loadList();
-    api.getSettings().then((s: { operatingMode?: OperatingMode }) => {
+    api.getSettings().then((s: { operatingMode?: OperatingMode; pollIntervalSec?: number }) => {
       if (s?.operatingMode) setMode(s.operatingMode);
+      if (typeof s?.pollIntervalSec === "number") setPollIntervalSec(s.pollIntervalSec);
     }).catch((e) => console.error("[getSettings]", e));
     // Subscribe once; use ref so these closures always read the current selection.
     const offMode = api.onModeChanged((m: string) => setMode(m as OperatingMode));
+    const offInterval = api.onPollIntervalChanged((sec: number) => setPollIntervalSec(sec));
     const off1 = api.onRecordsChanged(() => {
       loadList();
       if (selectedKeyRef.current) loadDetail(selectedKeyRef.current);
@@ -91,6 +105,7 @@ export function App() {
     const off2 = api.onFocusPr((k) => loadDetail(k));
     return () => {
       offMode();
+      offInterval();
       off1();
       off2();
     };
@@ -168,6 +183,20 @@ export function App() {
             <button className="poll-btn" onClick={pollNow} disabled={polling}>
               {polling ? "Polling…" : "Poll now"}
             </button>
+            <select
+              className="interval-select"
+              aria-label="Poll interval"
+              value={String(nearestPreset(pollIntervalSec))}
+              onChange={(e) => {
+                const sec = Number(e.target.value);
+                setPollIntervalSec(sec);
+                api.setPollInterval(sec);
+              }}
+            >
+              {INTERVAL_PRESETS.map((p) => (
+                <option key={p} value={p}>{INTERVAL_LABEL[p]}</option>
+              ))}
+            </select>
             <button
               className="hidden-toggle"
               onClick={() => setShowHidden((v) => !v)}
