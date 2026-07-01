@@ -118,6 +118,7 @@ export const PrRecord = z.object({
   author: z.string(),
   baseRef: z.string(),
   state: PrState,
+  dismissed: z.boolean().optional(),   // view flag: hidden from the queue/tray; does not affect lifecycle state
   mode: Mode,
   headSha: z.string(),
   draftVersion: z.number().int(),
