@@ -64,7 +64,7 @@ app.whenReady().then(async () => {
       quit: () => { app.quit(); }, openAtLogin: settings.openAtLogin,
       getMode: () => settings.operatingMode,
       setMode: (m) => { setOperatingMode(m).catch((e) => console.error("[setMode]", e)); },
-      getFilters: () => ({ showDone: settings.showDone, showDismissed: settings.showDismissed }),
+      getFilters: () => ({ showDone: settings.showDone, showDismissed: settings.showDismissed, showClosed: settings.showClosed }),
     };
 
     applyLoginItem(settings.openAtLogin);
@@ -97,7 +97,7 @@ app.whenReady().then(async () => {
 
     const broadcastQueueFilters = () => {
       for (const w of BrowserWindow.getAllWindows())
-        w.webContents.send("queue-filters-changed", { showDone: settings.showDone, showDismissed: settings.showDismissed });
+        w.webContents.send("queue-filters-changed", { showDone: settings.showDone, showDismissed: settings.showDismissed, showClosed: settings.showClosed });
     };
 
     async function setOperatingMode(mode: OperatingMode): Promise<void> {
@@ -135,8 +135,8 @@ app.whenReady().then(async () => {
       broadcastPollInterval();
     }
 
-    function setQueueFilters(f: { showDone: boolean; showDismissed: boolean }): void {
-      settings = { ...settings, showDone: !!f.showDone, showDismissed: !!f.showDismissed };
+    function setQueueFilters(f: { showDone: boolean; showDismissed: boolean; showClosed: boolean }): void {
+      settings = { ...settings, showDone: !!f.showDone, showDismissed: !!f.showDismissed, showClosed: !!f.showClosed };
       saveSettings(dataDir, settings);
       refreshTray(() => store.list(), trayHandlers);
       broadcastQueueFilters();
@@ -149,7 +149,7 @@ app.whenReady().then(async () => {
         const parsed = Settings.parse(s);
         // Preserve the live main-window controls — the prefs form does not own them.
         settings = { ...parsed, operatingMode: settings.operatingMode, automatedConfirmed: settings.automatedConfirmed,
-          showDone: settings.showDone, showDismissed: settings.showDismissed };
+          showDone: settings.showDone, showDismissed: settings.showDismissed, showClosed: settings.showClosed };
         saveSettings(dataDir, settings);
         applyLoginItem(settings.openAtLogin);
         restartPolling();

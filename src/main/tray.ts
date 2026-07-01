@@ -14,7 +14,7 @@ export interface TrayHandlers {
 
 const RANK: Record<string, number> = {
   NEEDS_REVIEW: 0, GENERATING: 1, POSTING: 2, POSTED_AWAITING_AUTHOR: 3,
-  STALE: 4, ERROR: 5, DISCOVERED: 6, DONE: 7,
+  STALE: 4, ERROR: 5, DISCOVERED: 6, DONE: 7, CLOSED: 8,
 };
 
 const MODE_LABEL: Record<OperatingMode, string> = {

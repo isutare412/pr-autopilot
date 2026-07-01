@@ -75,10 +75,12 @@ describe("settings", () => {
   it("defaults the queue filters to hidden and round-trips them", () => {
     expect(DEFAULT_SETTINGS.showDone).toBe(false);
     expect(DEFAULT_SETTINGS.showDismissed).toBe(false);
+    expect(DEFAULT_SETTINGS.showClosed).toBe(false);
     const dir = mkdtempSync(join(tmpdir(), "pa-"));
-    saveSettings(dir, { ...DEFAULT_SETTINGS, showDone: true, showDismissed: true });
+    saveSettings(dir, { ...DEFAULT_SETTINGS, showDone: true, showDismissed: true, showClosed: true });
     const s = loadSettings(dir);
     expect(s.showDone).toBe(true);
     expect(s.showDismissed).toBe(true);
+    expect(s.showClosed).toBe(true);
   });
 });

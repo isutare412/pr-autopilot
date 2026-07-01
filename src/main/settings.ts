@@ -12,6 +12,7 @@ export const Settings = z.object({
   pollIntervalSec: z.number().int().positive().default(600),
   showDone: z.boolean().default(false),
   showDismissed: z.boolean().default(false),
+  showClosed: z.boolean().default(false),
   genConcurrency: z.number().int().positive().default(2),
   retentionDays: z.number().int().positive().default(30),
   claudeConfigDir: z.string().default("~/.claude"),

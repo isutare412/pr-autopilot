@@ -16,7 +16,7 @@ const handlers = {
   openPr: vi.fn(), openMain: vi.fn(), pollNow: vi.fn(), openPreferences: vi.fn(),
   toggleLogin: vi.fn(), quit: vi.fn(), openAtLogin: true,
   getMode: () => "supervised" as OperatingMode, setMode: vi.fn(),
-  getFilters: () => ({ showDone: false, showDismissed: false }),
+  getFilters: () => ({ showDone: false, showDismissed: false, showClosed: false }),
 };
 
 describe("buildTrayMenu", () => {
@@ -34,7 +34,7 @@ describe("buildTrayMenu", () => {
   });
 
   it("reveals DONE and dismissed rows when the filters are on", () => {
-    const h = { ...handlers, getFilters: () => ({ showDone: true, showDismissed: true }) };
+    const h = { ...handlers, getFilters: () => ({ showDone: true, showDismissed: true, showClosed: false }) };
     const records = [
       rec({ key: "k-done", number: 2, repo: "r2", state: "DONE", title: "done" }),
       rec({ key: "k-dis", number: 4, repo: "r4", state: "NEEDS_REVIEW", dismissed: true, title: "dis" }),
@@ -42,6 +42,13 @@ describe("buildTrayMenu", () => {
     const labels = buildTrayMenu(records, h).map((m) => m.label);
     expect(labels).toContain("#2 r2 — DONE");
     expect(labels).toContain("#4 r4 — NEEDS_REVIEW");
+  });
+
+  it("hides a CLOSED row unless showClosed is on", () => {
+    const records = [rec({ key: "k-cl", number: 9, repo: "r9", state: "CLOSED", title: "closed" })];
+    expect(buildTrayMenu(records, handlers).map((m) => m.label).some((l) => l?.includes("#9"))).toBe(false);
+    const h = { ...handlers, getFilters: () => ({ showDone: false, showDismissed: false, showClosed: true }) };
+    expect(buildTrayMenu(records, h).map((m) => m.label)).toContain("#9 r9 — CLOSED");
   });
 
   it("includes the fixed controls and reflects openAtLogin as checked", () => {
@@ -102,7 +109,7 @@ describe("trayIconFile", () => {
 });
 
 describe("hasNeedsReview", () => {
-  const F = { showDone: false, showDismissed: false };
+  const F = { showDone: false, showDismissed: false, showClosed: false };
   it("is true iff some visible record is NEEDS_REVIEW", () => {
     expect(hasNeedsReview([], F)).toBe(false);
     expect(hasNeedsReview([rec({ state: "DONE" })], F)).toBe(false);

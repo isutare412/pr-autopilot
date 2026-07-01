@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { isQueueVisible } from "../src/main/core/visibility";
 
 describe("isQueueVisible", () => {
-  const F = (over = {}) => ({ showDone: false, showDismissed: false, ...over });
+  const F = (over = {}) => ({ showDone: false, showDismissed: false, showClosed: false, ...over });
 
   it("shows an active NEEDS_REVIEW record with both filters off", () => {
     expect(isQueueVisible({ state: "NEEDS_REVIEW" }, F())).toBe(true);
@@ -26,5 +26,13 @@ describe("isQueueVisible", () => {
     expect(isQueueVisible(rec, F({ showDone: true }))).toBe(false);
     expect(isQueueVisible(rec, F({ showDismissed: true }))).toBe(false);
     expect(isQueueVisible(rec, F({ showDone: true, showDismissed: true }))).toBe(true);
+  });
+  it("hides a CLOSED record unless showClosed", () => {
+    expect(isQueueVisible({ state: "CLOSED" }, F())).toBe(false);
+    expect(isQueueVisible({ state: "CLOSED" }, F({ showClosed: true }))).toBe(true);
+  });
+  it("treats showClosed independently of showDone/showDismissed", () => {
+    expect(isQueueVisible({ state: "CLOSED" }, F({ showDone: true }))).toBe(false);
+    expect(isQueueVisible({ state: "DONE" }, F({ showClosed: true }))).toBe(false);
   });
 });
