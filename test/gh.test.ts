@@ -45,4 +45,23 @@ describe("Gh", () => {
     expect(r.calls[0].args).toContain("/repos/O/R/pulls/65/requested_reviewers");
     expect(r.calls[0].args).toContain("reviewers[]=me");
   });
+
+  it("prStatus returns the PR state and head SHA in one call", async () => {
+    const r = new FakeRunner(() => JSON.stringify({ state: "MERGED", headRefOid: "SHA9" }));
+    const gh = new Gh(r, "git.linecorp.com");
+    expect(await gh.prStatus("O", "R", 65)).toEqual({ state: "MERGED", headSha: "SHA9" });
+    expect(r.calls[0].args).toEqual(
+      ["pr", "view", "65", "--repo", "git.linecorp.com/O/R", "--json", "state,headRefOid"],
+    );
+  });
+
+  it("prState returns the trimmed PR state", async () => {
+    const r = new FakeRunner(() => "CLOSED\n");
+    const gh = new Gh(r, "git.linecorp.com");
+    expect(await gh.prState("O", "R", 65)).toBe("CLOSED");
+    const c = r.calls[0];
+    expect(c.args).toContain("--json");
+    expect(c.args).toContain("state");
+    expect(c.args).toContain(".state");
+  });
 });
