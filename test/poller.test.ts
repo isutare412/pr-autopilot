@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decideWork, repoAllowed, authorAwaitingReview } from "../src/main/core/poller";
+import { decideWork, repoAllowed, authorAwaitingReview, keysToProbe } from "../src/main/core/poller";
 import type { PrRecord } from "../src/main/core/schema";
 import type { SearchPr, ReviewThread } from "../src/main/core/gh";
 
@@ -119,5 +119,30 @@ describe("decideWork", () => {
     expect(decideWork({ queue: [pr(65)], ...base, repoAllow: ["other"] })).toEqual([]);
     expect(decideWork({ queue: [pr(65)], ...base, repoDeny: ["R"] })).toEqual([]);
     expect(decideWork({ queue: [pr(65)], ...base, repoAllow: ["R"] }).length).toBe(1);
+  });
+});
+
+describe("keysToProbe", () => {
+  it("returns lingering, non-dismissed records absent from the open set", () => {
+    const ex = new Map([
+      existing(1, { state: "NEEDS_REVIEW" }),
+      existing(2, { state: "POSTED_AWAITING_AUTHOR" }),
+      existing(3, { state: "NEEDS_REVIEW" }),                    // in open set → excluded
+      existing(4, { state: "GENERATING" }),                      // in-flight → excluded
+      existing(5, { state: "DONE" }),                            // terminal → excluded
+      existing(6, { state: "NEEDS_REVIEW", dismissed: true }),   // dismissed → excluded
+    ]);
+    const openKeys = new Set([key(3)]);
+    expect(keysToProbe(ex, openKeys).sort()).toEqual([key(1), key(2)].sort());
+  });
+
+  it("returns nothing when records are open, in-flight, terminal, or dismissed", () => {
+    const ex = new Map([
+      existing(1, { state: "POSTING" }),
+      existing(2, { state: "ERROR" }),
+      existing(3, { state: "STALE" }),
+      existing(4, { state: "CLOSED" }),
+    ]);
+    expect(keysToProbe(ex, new Set())).toEqual([]);
   });
 });

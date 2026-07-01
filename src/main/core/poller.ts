@@ -21,6 +21,22 @@ export interface WorkItem { key: string; mode: Mode; sha: string; pr: SearchPr; 
 
 const BUSY = new Set(["GENERATING", "POSTING"]);
 
+const LINGERING = new Set(["NEEDS_REVIEW", "POSTED_AWAITING_AUTHOR"]);
+
+/** Keys of stored records that dropped out of the open-search set but are still
+ *  in a waiting state — candidates to probe for a merged/closed PR. Skips
+ *  in-flight/terminal states and dismissed (user-parked) records. */
+export function keysToProbe(existing: Map<string, PrRecord>, openKeys: Set<string>): string[] {
+  const keys: string[] = [];
+  for (const [key, rec] of existing) {
+    if (openKeys.has(key)) continue;
+    if (rec.dismissed) continue;
+    if (!LINGERING.has(rec.state)) continue;
+    keys.push(key);
+  }
+  return keys;
+}
+
 /** A repo passes unless denied; if allow is non-empty it must also be allowed.
  *  Entries match the bare repo name or `owner/repo`. Deny wins over allow. */
 export function repoAllowed(owner: string, repo: string, allow: string[], deny: string[]): boolean {
