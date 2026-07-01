@@ -1,4 +1,4 @@
-import { app, dialog, BrowserWindow } from "electron";
+import { app, dialog, BrowserWindow, nativeTheme } from "electron";
 import { join } from "node:path";
 import { Store } from "./core/store";
 import { Gh, realGhRunner } from "./core/gh";
@@ -70,6 +70,8 @@ app.whenReady().then(async () => {
     applyLoginItem(settings.openAtLogin);
     installAppMenu(() => showPreferences());   // Cmd+, + clipboard shortcuts
     createTray(() => store.list(), trayHandlers);
+    // Re-swap the light/dark badge variant when the system appearance changes.
+    nativeTheme.on("updated", () => refreshTray(() => store.list(), trayHandlers));
 
     // recover + poll loop + prune (as pr-cockpit did)
     try { orch.recoverInFlight(); } catch (e) { console.error("[recover]", e); }
@@ -144,7 +146,7 @@ app.whenReady().then(async () => {
       openPreferences: () => showPreferences(),
       setPollInterval,
     });
-    watchStoreForChanges(dataDir);
+    watchStoreForChanges(dataDir, () => refreshTray(() => store.list(), trayHandlers));
 
     showMain(); // open the window on first launch
     app.on("activate", () => showMain()); // dock-icon click re-shows the (hidden, not destroyed) window

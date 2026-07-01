@@ -40,11 +40,12 @@ export function registerIpc(d: IpcDeps): void {
  *  Watching the directory (not the file) survives atomic rename-based writes.
  *  Covers both foreground IPC mutations and background poll/gen/post writes,
  *  including live genActivity updates. Debounced to coalesce bursts. */
-export function watchStoreForChanges(dataDir: string): void {
+export function watchStoreForChanges(dataDir: string, onChange?: () => void): void {
   let timer: NodeJS.Timeout | null = null;
   const emit = () => {
     timer = null;
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send("records-changed");
+    onChange?.();
   };
   watch(dataDir, (_e, name) => {
     if (name === "index.json" && !timer) timer = setTimeout(emit, 150);
