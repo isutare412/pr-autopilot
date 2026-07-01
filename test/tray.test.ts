@@ -16,22 +16,32 @@ const handlers = {
   openPr: vi.fn(), openMain: vi.fn(), pollNow: vi.fn(), openPreferences: vi.fn(),
   toggleLogin: vi.fn(), quit: vi.fn(), openAtLogin: true,
   getMode: () => "supervised" as OperatingMode, setMode: vi.fn(),
+  getFilters: () => ({ showDone: false, showDismissed: false }),
 };
 
 describe("buildTrayMenu", () => {
-  it("lists active PRs as '#n repo — STATE', NEEDS_REVIEW first, hides DISMISSED", () => {
+  it("lists visible PRs '#n repo — STATE' NEEDS_REVIEW first, hiding dismissed and (by default) DONE", () => {
     const records = [
       rec({ key: "k-done", number: 2, repo: "r2", state: "DONE", title: "done" }),
       rec({ key: "k-nr", number: 3, repo: "r3", state: "NEEDS_REVIEW", title: "needs" }),
-      rec({ key: "k-dis", number: 4, repo: "r4", state: "DISMISSED" }),
+      rec({ key: "k-dis", number: 4, repo: "r4", state: "NEEDS_REVIEW", dismissed: true }),
     ];
     const menu = buildTrayMenu(records, handlers);
     const labels = menu.map((m) => m.label);
     expect(labels).toContain("#3 r3 — NEEDS_REVIEW");
+    expect(labels.some((l) => l?.includes("#2"))).toBe(false); // DONE hidden (showDone off)
+    expect(labels.some((l) => l?.includes("#4"))).toBe(false); // dismissed hidden
+  });
+
+  it("reveals DONE and dismissed rows when the filters are on", () => {
+    const h = { ...handlers, getFilters: () => ({ showDone: true, showDismissed: true }) };
+    const records = [
+      rec({ key: "k-done", number: 2, repo: "r2", state: "DONE", title: "done" }),
+      rec({ key: "k-dis", number: 4, repo: "r4", state: "NEEDS_REVIEW", dismissed: true, title: "dis" }),
+    ];
+    const labels = buildTrayMenu(records, h).map((m) => m.label);
     expect(labels).toContain("#2 r2 — DONE");
-    expect(labels.some((l) => l?.includes("#4"))).toBe(false);
-    // NEEDS_REVIEW sorts before DONE
-    expect(labels.indexOf("#3 r3 — NEEDS_REVIEW")).toBeLessThan(labels.indexOf("#2 r2 — DONE"));
+    expect(labels).toContain("#4 r4 — NEEDS_REVIEW");
   });
 
   it("includes the fixed controls and reflects openAtLogin as checked", () => {
@@ -92,10 +102,14 @@ describe("trayIconFile", () => {
 });
 
 describe("hasNeedsReview", () => {
-  it("is true iff some record is NEEDS_REVIEW (DISMISSED does not count)", () => {
-    expect(hasNeedsReview([])).toBe(false);
-    expect(hasNeedsReview([rec({ state: "DONE" })])).toBe(false);
-    expect(hasNeedsReview([rec({ state: "DISMISSED" })])).toBe(false);
-    expect(hasNeedsReview([rec({ state: "DONE" }), rec({ state: "NEEDS_REVIEW" })])).toBe(true);
+  const F = { showDone: false, showDismissed: false };
+  it("is true iff some visible record is NEEDS_REVIEW", () => {
+    expect(hasNeedsReview([], F)).toBe(false);
+    expect(hasNeedsReview([rec({ state: "DONE" })], F)).toBe(false);
+    expect(hasNeedsReview([rec({ state: "DONE" }), rec({ state: "NEEDS_REVIEW" })], F)).toBe(true);
+  });
+  it("a dismissed NEEDS_REVIEW does not light the dot while showDismissed is off", () => {
+    expect(hasNeedsReview([rec({ state: "NEEDS_REVIEW", dismissed: true })], F)).toBe(false);
+    expect(hasNeedsReview([rec({ state: "NEEDS_REVIEW", dismissed: true })], { ...F, showDismissed: true })).toBe(true);
   });
 });

@@ -3,11 +3,13 @@ import { join } from "node:path";
 import type { MenuItemConstructorOptions } from "electron";
 import type { PrRecord, OperatingMode } from "./core/schema";
 import { getPluginDir } from "./paths";
+import { isQueueVisible, QueueFilters } from "./core/visibility";
 
 export interface TrayHandlers {
   openPr(key: string): void; openMain(): void; pollNow(): void;
   openPreferences(): void; toggleLogin(): void; quit(): void; openAtLogin: boolean;
   getMode(): OperatingMode; setMode(m: OperatingMode): void;
+  getFilters(): QueueFilters;
 }
 
 const RANK: Record<string, number> = {
@@ -27,9 +29,9 @@ export function trayIconFile(mode: OperatingMode, needsReview = false, dark = fa
     : "trayTemplate.png";
 }
 
-/** True when any record awaits the user's approval. DISMISSED is a distinct state. */
-export function hasNeedsReview(records: PrRecord[]): boolean {
-  return records.some((r) => r.state === "NEEDS_REVIEW");
+/** True when a *visible* record awaits the user's approval (drives the red dot). */
+export function hasNeedsReview(records: PrRecord[], filters: QueueFilters): boolean {
+  return records.some((r) => r.state === "NEEDS_REVIEW" && isQueueVisible(r, filters));
 }
 
 function loadTrayIcon(mode: OperatingMode, needsReview: boolean) {
@@ -49,7 +51,7 @@ export function buildTrayMenu(records: PrRecord[], h: TrayHandlers): MenuItemCon
     { label: "Automated", type: "radio", checked: mode === "automated", click: () => h.setMode("automated") },
     { type: "separator" },
   ];
-  const visible = records.filter((r) => r.state !== "DISMISSED");
+  const visible = records.filter((r) => isQueueVisible(r, h.getFilters()));
   visible.sort((a, b) => (RANK[a.state] ?? 9) - (RANK[b.state] ?? 9) || a.repo.localeCompare(b.repo));
   const prItems: MenuItemConstructorOptions[] = visible.length
     ? visible.map((r) => ({ label: `#${r.number} ${r.repo} — ${r.state}`, click: () => h.openPr(r.key) }))
@@ -70,7 +72,7 @@ export function buildTrayMenu(records: PrRecord[], h: TrayHandlers): MenuItemCon
 let tray: Tray | null = null;
 
 export function createTray(getRecords: () => PrRecord[], h: TrayHandlers): Tray {
-  tray = new Tray(loadTrayIcon(h.getMode(), hasNeedsReview(getRecords())));
+  tray = new Tray(loadTrayIcon(h.getMode(), hasNeedsReview(getRecords(), h.getFilters())));
   tray.setToolTip(`PR Autopilot — ${MODE_LABEL[h.getMode()]}`);
   const refresh = () => tray!.setContextMenu(Menu.buildFromTemplate(buildTrayMenu(getRecords(), h)));
   refresh();
@@ -79,7 +81,7 @@ export function createTray(getRecords: () => PrRecord[], h: TrayHandlers): Tray 
 
 export function refreshTray(getRecords: () => PrRecord[], h: TrayHandlers): void {
   if (!tray) return;
-  tray.setImage(loadTrayIcon(h.getMode(), hasNeedsReview(getRecords())));
+  tray.setImage(loadTrayIcon(h.getMode(), hasNeedsReview(getRecords(), h.getFilters())));
   tray.setToolTip(`PR Autopilot — ${MODE_LABEL[h.getMode()]}`);
   tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenu(getRecords(), h)));
 }

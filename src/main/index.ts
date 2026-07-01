@@ -65,6 +65,7 @@ app.whenReady().then(async () => {
       quit: () => { app.quit(); }, openAtLogin: settings.openAtLogin,
       getMode: () => settings.operatingMode,
       setMode: (m) => { setOperatingMode(m).catch((e) => console.error("[setMode]", e)); },
+      getFilters: () => ({ showDone: settings.showDone, showDismissed: settings.showDismissed }),
     };
 
     applyLoginItem(settings.openAtLogin);
