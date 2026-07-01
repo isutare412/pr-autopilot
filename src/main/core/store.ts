@@ -77,7 +77,7 @@ export class Store {
     const terminal = new Set(["DONE", "DISMISSED", "POSTED_AWAITING_AUTHOR", "ERROR"]);
     const pruned: string[] = [];
     for (const r of this.list()) {
-      if (!terminal.has(r.state)) continue;
+      if (!terminal.has(r.state) && !r.dismissed) continue;
       const stamp = new Date(r.doneAt ?? r.updatedAt).getTime();
       if (stamp < cutoff) {
         rmSync(this.fileFor(r.key));

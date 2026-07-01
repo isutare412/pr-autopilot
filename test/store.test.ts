@@ -95,6 +95,14 @@ describe("Store", () => {
     expect(s.get("git.linecorp.com/O/R#72")).toBeNull();
   });
 
+  it("prune removes an old dismissed record even with a non-terminal state", () => {
+    const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
+    s.put(rec({ key: "git.linecorp.com/O/R#73", number: 73, state: "NEEDS_REVIEW", dismissed: true, doneAt: null, updatedAt: "2026-01-01T00:00:00Z" }));
+    const pruned = s.prune(30, "2026-03-01T00:00:00Z");
+    expect(pruned).toEqual(["git.linecorp.com/O/R#73"]);
+    expect(s.get("git.linecorp.com/O/R#73")).toBeNull();
+  });
+
   it("delete removes the record file and updates the index", () => {
     const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
     s.put(rec());
