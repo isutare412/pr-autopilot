@@ -51,7 +51,7 @@ export function decideWork(args: {
 
     if (!rec) { work.push({ key, mode: "first-review", sha, pr }); continue; }
     if (BUSY.has(rec.state)) continue;
-    if (rec.state === "DISMISSED") continue; // user deleted it: never re-review until pruned, even if the head advances
+    if (rec.dismissed) continue; // set aside by the user: never re-review while dismissed, even if the head advances
 
     const shaAdvanced = sha && sha !== rec.headSha;
     const authorReplied = args.authorRepliedKeys.has(key);

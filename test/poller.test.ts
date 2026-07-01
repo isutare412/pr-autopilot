@@ -87,10 +87,16 @@ describe("decideWork", () => {
     expect(work).toEqual([{ key: key(65), mode: "re-review", sha: "SHA1", pr: pr(65) }]);
   });
 
-  it("never re-reviews a DISMISSED (deleted) PR, even when the head advances", () => {
-    const work = decideWork({ queue: [pr(65)], existing: new Map([existing(65, { state: "DISMISSED", headSha: "SHA1" })]),
+  it("never re-reviews a dismissed PR, even when the head advances", () => {
+    const work = decideWork({ queue: [pr(65)], existing: new Map([existing(65, { dismissed: true, headSha: "SHA1" })]),
       liveHeads: new Map([[key(65), "SHA2"]]), authorRepliedKeys: new Set() });
     expect(work).toEqual([]);
+  });
+
+  it("re-reviews a restored (non-dismissed) PR once its head advances", () => {
+    const work = decideWork({ queue: [pr(65)], existing: new Map([existing(65, { dismissed: false, state: "NEEDS_REVIEW", headSha: "SHA1" })]),
+      liveHeads: new Map([[key(65), "SHA2"]]), authorRepliedKeys: new Set() });
+    expect(work.map((w) => w.key)).toEqual([key(65)]);
   });
 
   it("does not re-enqueue a PR already generating", () => {
