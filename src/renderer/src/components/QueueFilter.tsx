@@ -3,12 +3,14 @@ import { useState, useRef, useEffect } from "react";
 interface QueueFilterProps {
   showDone: boolean;
   showDismissed: boolean;
+  showClosed: boolean;
   doneCount: number;
   dismissedCount: number;
-  onChange: (next: { showDone: boolean; showDismissed: boolean }) => void;
+  closedCount: number;
+  onChange: (next: { showDone: boolean; showDismissed: boolean; showClosed: boolean }) => void;
 }
 
-export function QueueFilter({ showDone, showDismissed, doneCount, dismissedCount, onChange }: QueueFilterProps) {
+export function QueueFilter({ showDone, showDismissed, showClosed, doneCount, dismissedCount, closedCount, onChange }: QueueFilterProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -38,7 +40,7 @@ export function QueueFilter({ showDone, showDismissed, doneCount, dismissedCount
             <input
               type="checkbox"
               checked={showDone}
-              onChange={(e) => onChange({ showDone: e.target.checked, showDismissed })}
+              onChange={(e) => onChange({ showDone: e.target.checked, showDismissed, showClosed })}
             />
             Show done{doneCount ? ` (${doneCount})` : ""}
           </label>
@@ -46,9 +48,17 @@ export function QueueFilter({ showDone, showDismissed, doneCount, dismissedCount
             <input
               type="checkbox"
               checked={showDismissed}
-              onChange={(e) => onChange({ showDone, showDismissed: e.target.checked })}
+              onChange={(e) => onChange({ showDone, showDismissed: e.target.checked, showClosed })}
             />
             Show dismissed{dismissedCount ? ` (${dismissedCount})` : ""}
+          </label>
+          <label className="filter-opt">
+            <input
+              type="checkbox"
+              checked={showClosed}
+              onChange={(e) => onChange({ showDone, showDismissed, showClosed: e.target.checked })}
+            />
+            Show closed{closedCount ? ` (${closedCount})` : ""}
           </label>
         </div>
       )}

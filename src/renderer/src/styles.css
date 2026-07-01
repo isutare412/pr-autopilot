@@ -472,6 +472,15 @@ body {
   color: var(--stale);
 }
 
+.state-CLOSED {
+  border-left-color: var(--dismiss);
+  opacity: 0.72;
+}
+
+.state-CLOSED .row-state {
+  color: var(--dismiss);
+}
+
 .row.dismissed {
   opacity: 0.55;
 }

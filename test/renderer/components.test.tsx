@@ -37,14 +37,14 @@ describe("QueueRow", () => {
 });
 
 describe("QueueFilter", () => {
-  const props = { showDone: false, showDismissed: false, doneCount: 2, dismissedCount: 1, onChange: vi.fn() };
+  const props = { showDone: false, showDismissed: false, showClosed: false, doneCount: 2, dismissedCount: 1, closedCount: 3, onChange: vi.fn() };
 
   it("opens the menu and toggles show done", () => {
     const onChange = vi.fn();
     render(<QueueFilter {...props} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: /filter/i }));
     fireEvent.click(screen.getByRole("checkbox", { name: /show done/i }));
-    expect(onChange).toHaveBeenCalledWith({ showDone: true, showDismissed: false });
+    expect(onChange).toHaveBeenCalledWith({ showDone: true, showDismissed: false, showClosed: false });
   });
 
   it("toggles show dismissed independently", () => {
@@ -52,7 +52,15 @@ describe("QueueFilter", () => {
     render(<QueueFilter {...props} showDone onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: /filter/i }));
     fireEvent.click(screen.getByRole("checkbox", { name: /show dismissed/i }));
-    expect(onChange).toHaveBeenCalledWith({ showDone: true, showDismissed: true });
+    expect(onChange).toHaveBeenCalledWith({ showDone: true, showDismissed: true, showClosed: false });
+  });
+
+  it("toggles show closed independently", () => {
+    const onChange = vi.fn();
+    render(<QueueFilter {...props} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /show closed/i }));
+    expect(onChange).toHaveBeenCalledWith({ showDone: false, showDismissed: false, showClosed: true });
   });
 });
 

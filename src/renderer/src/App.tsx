@@ -29,6 +29,7 @@ export function App() {
   const [polling, setPolling] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
+  const [showClosed, setShowClosed] = useState(false);
   const [mode, setMode] = useState<OperatingMode>("supervised");
   const [pollIntervalSec, setPollIntervalSec] = useState(600);
 
@@ -90,26 +91,29 @@ export function App() {
     }
   }
 
-  function applyFilters(next: { showDone: boolean; showDismissed: boolean }) {
+  function applyFilters(next: { showDone: boolean; showDismissed: boolean; showClosed: boolean }) {
     setShowDone(next.showDone);
     setShowDismissed(next.showDismissed);
+    setShowClosed(next.showClosed);
     api.setQueueFilters(next);
   }
 
   useEffect(() => {
     loadList();
-    api.getSettings().then((s: { operatingMode?: OperatingMode; pollIntervalSec?: number; showDone?: boolean; showDismissed?: boolean }) => {
+    api.getSettings().then((s: { operatingMode?: OperatingMode; pollIntervalSec?: number; showDone?: boolean; showDismissed?: boolean; showClosed?: boolean }) => {
       if (s?.operatingMode) setMode(s.operatingMode);
       if (typeof s?.pollIntervalSec === "number") setPollIntervalSec(s.pollIntervalSec);
       if (typeof s?.showDone === "boolean") setShowDone(s.showDone);
       if (typeof s?.showDismissed === "boolean") setShowDismissed(s.showDismissed);
+      if (typeof s?.showClosed === "boolean") setShowClosed(s.showClosed);
     }).catch((e) => console.error("[getSettings]", e));
     // Subscribe once; use ref so these closures always read the current selection.
     const offMode = api.onModeChanged((m: string) => setMode(m as OperatingMode));
     const offInterval = api.onPollIntervalChanged((sec: number) => setPollIntervalSec(sec));
-    const offFilters = api.onQueueFiltersChanged((f: { showDone: boolean; showDismissed: boolean }) => {
+    const offFilters = api.onQueueFiltersChanged((f: { showDone: boolean; showDismissed: boolean; showClosed: boolean }) => {
       setShowDone(f.showDone);
       setShowDismissed(f.showDismissed);
+      setShowClosed(f.showClosed);
     });
     const off1 = api.onRecordsChanged(() => {
       loadList();
@@ -128,14 +132,15 @@ export function App() {
 
   const doneCount = rows.filter((r) => r.state === "DONE").length;
   const dismissedCount = rows.filter((r) => r.dismissed).length;
-  const visibleRows = rows.filter((r) => isQueueVisible(r, { showDone, showDismissed }));
+  const closedCount = rows.filter((r) => r.state === "CLOSED").length;
+  const visibleRows = rows.filter((r) => isQueueVisible(r, { showDone, showDismissed, showClosed }));
 
   // Title counts only reviews that actually await me: visible NEEDS_REVIEW.
   // A dismissed (or filtered-out) review is not "to review" — same rule as the tray dot.
   useEffect(() => {
-    const n = rows.filter((r) => r.state === "NEEDS_REVIEW" && isQueueVisible(r, { showDone, showDismissed })).length;
+    const n = rows.filter((r) => r.state === "NEEDS_REVIEW" && isQueueVisible(r, { showDone, showDismissed, showClosed })).length;
     document.title = n > 0 ? `PR Autopilot — ${n} to review` : "PR Autopilot";
-  }, [rows, showDone, showDismissed]);
+  }, [rows, showDone, showDismissed, showClosed]);
 
   return (
     <>
@@ -222,8 +227,10 @@ export function App() {
             <QueueFilter
               showDone={showDone}
               showDismissed={showDismissed}
+              showClosed={showClosed}
               doneCount={doneCount}
               dismissedCount={dismissedCount}
+              closedCount={closedCount}
               onChange={applyFilters}
             />
           </div>
