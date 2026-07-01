@@ -12,6 +12,7 @@ export interface IpcDeps {
   setOperatingMode: (m: OperatingMode) => void;
   openPreferences: () => void;
   setPollInterval: (sec: number) => void;
+  setQueueFilters: (f: { showDone: boolean; showDismissed: boolean }) => void;
 }
 
 export function registerIpc(d: IpcDeps): void {
@@ -34,6 +35,7 @@ export function registerIpc(d: IpcDeps): void {
   ipcMain.handle("mode:set", (_e, m: OperatingMode) => d.setOperatingMode(m));
   ipcMain.handle("app:openPreferences", () => d.openPreferences());
   ipcMain.handle("poll-interval:set", (_e, sec: number) => d.setPollInterval(sec));
+  ipcMain.handle("queue-filters:set", (_e, f: { showDone: boolean; showDismissed: boolean }) => d.setQueueFilters(f));
 }
 
 /** The Store rewrites index.json on every put; watch the directory and notify all windows.

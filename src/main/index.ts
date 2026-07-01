@@ -95,6 +95,11 @@ app.whenReady().then(async () => {
         w.webContents.send("poll-interval-changed", settings.pollIntervalSec);
     };
 
+    const broadcastQueueFilters = () => {
+      for (const w of BrowserWindow.getAllWindows())
+        w.webContents.send("queue-filters-changed", { showDone: settings.showDone, showDismissed: settings.showDismissed });
+    };
+
     async function setOperatingMode(mode: OperatingMode): Promise<void> {
       if (mode === settings.operatingMode) { refreshTray(() => store.list(), trayHandlers); broadcastMode(); return; }
       if (mode === "automated" && !settings.automatedConfirmed) {
@@ -130,13 +135,21 @@ app.whenReady().then(async () => {
       broadcastPollInterval();
     }
 
+    function setQueueFilters(f: { showDone: boolean; showDismissed: boolean }): void {
+      settings = { ...settings, showDone: !!f.showDone, showDismissed: !!f.showDismissed };
+      saveSettings(dataDir, settings);
+      refreshTray(() => store.list(), trayHandlers);
+      broadcastQueueFilters();
+    }
+
     registerIpc({
       store, orch, dataDir, nowIso,
       getSettings: () => settings,
       setSettings: (s: Settings) => {
         const parsed = Settings.parse(s);
-        // Preserve the live operating-mode controls — the prefs form does not own them.
-        settings = { ...parsed, operatingMode: settings.operatingMode, automatedConfirmed: settings.automatedConfirmed };
+        // Preserve the live main-window controls — the prefs form does not own them.
+        settings = { ...parsed, operatingMode: settings.operatingMode, automatedConfirmed: settings.automatedConfirmed,
+          showDone: settings.showDone, showDismissed: settings.showDismissed };
         saveSettings(dataDir, settings);
         applyLoginItem(settings.openAtLogin);
         restartPolling();
@@ -145,6 +158,7 @@ app.whenReady().then(async () => {
       setOperatingMode,
       openPreferences: () => showPreferences(),
       setPollInterval,
+      setQueueFilters,
     });
     watchStoreForChanges(dataDir, () => refreshTray(() => store.list(), trayHandlers));
 

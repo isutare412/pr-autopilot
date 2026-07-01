@@ -16,6 +16,7 @@ const api = {
   setSettings: (s: unknown) => ipcRenderer.invoke("settings:set", s),
   setMode: (m: string) => ipcRenderer.invoke("mode:set", m),
   setPollInterval: (sec: number) => ipcRenderer.invoke("poll-interval:set", sec),
+  setQueueFilters: (f: { showDone: boolean; showDismissed: boolean }) => ipcRenderer.invoke("queue-filters:set", f),
   onRecordsChanged: (cb: () => void) => {
     const fn = () => cb();
     ipcRenderer.on("records-changed", fn);
@@ -30,6 +31,11 @@ const api = {
     const fn = (_e: unknown, sec: number) => cb(sec);
     ipcRenderer.on("poll-interval-changed", fn);
     return () => ipcRenderer.removeListener("poll-interval-changed", fn);
+  },
+  onQueueFiltersChanged: (cb: (f: { showDone: boolean; showDismissed: boolean }) => void) => {
+    const fn = (_e: unknown, f: { showDone: boolean; showDismissed: boolean }) => cb(f);
+    ipcRenderer.on("queue-filters-changed", fn);
+    return () => ipcRenderer.removeListener("queue-filters-changed", fn);
   },
   onFocusPr: (cb: (key: string) => void) => {
     const fn = (_e: unknown, key: string) => cb(key);
