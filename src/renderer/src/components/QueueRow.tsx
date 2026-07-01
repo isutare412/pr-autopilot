@@ -26,7 +26,7 @@ const RESTORE_ICON = (
 export function QueueRow({ row, selected, onOpen, onDismiss, onRestore }: QueueRowProps) {
   const c = row.counts;
   const badge = c ? `C${c.critical} M${c.major} m${c.minor} n${c.nit}` : "";
-  const hidden = row.state === "DISMISSED";
+  const hidden = !!row.dismissed;
 
   function handleAction(e: React.MouseEvent) {
     e.stopPropagation();
@@ -36,7 +36,7 @@ export function QueueRow({ row, selected, onOpen, onDismiss, onRestore }: QueueR
 
   return (
     <div
-      className={`row state-${row.state}${selected ? " selected" : ""}`}
+      className={`row state-${row.state}${row.dismissed ? " dismissed" : ""}${selected ? " selected" : ""}`}
       data-key={row.key}
       onClick={() => onOpen(row.key)}
     >

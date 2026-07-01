@@ -5,6 +5,7 @@ import { FindingCard } from "../../src/renderer/src/components/FindingCard";
 import { ActionsBar } from "../../src/renderer/src/components/ActionsBar";
 import { Detail } from "../../src/renderer/src/components/Detail";
 import { DeleteButton } from "../../src/renderer/src/components/DeleteButton";
+import { QueueFilter } from "../../src/renderer/src/components/QueueFilter";
 
 afterEach(cleanup);
 
@@ -27,11 +28,31 @@ describe("QueueRow", () => {
     expect(onDismiss).toHaveBeenCalledWith("k");
   });
 
-  it("fires onRestore from a hidden (DISMISSED) row's action button", () => {
+  it("fires onRestore from a dismissed row's action button", () => {
     const onRestore = vi.fn();
-    render(<QueueRow row={row({ state: "DISMISSED" })} selected={false} onOpen={vi.fn()} onDismiss={vi.fn()} onRestore={onRestore} />);
+    render(<QueueRow row={row({ dismissed: true })} selected={false} onOpen={vi.fn()} onDismiss={vi.fn()} onRestore={onRestore} />);
     fireEvent.click(screen.getByRole("button", { name: /restore #7/i }));
     expect(onRestore).toHaveBeenCalledWith("k");
+  });
+});
+
+describe("QueueFilter", () => {
+  const props = { showDone: false, showDismissed: false, doneCount: 2, dismissedCount: 1, onChange: vi.fn() };
+
+  it("opens the menu and toggles show done", () => {
+    const onChange = vi.fn();
+    render(<QueueFilter {...props} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /show done/i }));
+    expect(onChange).toHaveBeenCalledWith({ showDone: true, showDismissed: false });
+  });
+
+  it("toggles show dismissed independently", () => {
+    const onChange = vi.fn();
+    render(<QueueFilter {...props} showDone onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /show dismissed/i }));
+    expect(onChange).toHaveBeenCalledWith({ showDone: true, showDismissed: true });
   });
 });
 
@@ -71,7 +92,7 @@ describe("ActionsBar", () => {
   it("shows Dismiss for an active record and Restore for a dismissed one", () => {
     const { rerender } = render(<ActionsBar {...props} state="NEEDS_REVIEW" />);
     expect(screen.getByRole("button", { name: /^dismiss$/i })).toBeInTheDocument();
-    rerender(<ActionsBar {...props} state="DISMISSED" />);
+    rerender(<ActionsBar {...props} state="NEEDS_REVIEW" dismissed />);
     expect(screen.getByRole("button", { name: /^restore$/i })).toBeInTheDocument();
   });
 
@@ -180,7 +201,7 @@ describe("Detail — View on GitHub link", () => {
 
 describe("Detail error-branch actions", () => {
   const noop = () => {};
-  const errRecord = (state: string) => ({
+  const errRecord = (state: string, dismissed = false) => ({
     key: "k",
     host: "github.com",
     owner: "owner",
@@ -203,6 +224,7 @@ describe("Detail error-branch actions", () => {
     generatedAt: null,
     updatedAt: "",
     doneAt: null,
+    dismissed,
   } as import("../../src/renderer/src/types").UiRecord);
 
   it("shows Dismiss for an errored record and Restore when dismissed", () => {
@@ -211,7 +233,7 @@ describe("Detail error-branch actions", () => {
     );
     expect(screen.getByRole("button", { name: /^dismiss$/i })).toBeInTheDocument();
     rerender(
-      <Detail record={errRecord("DISMISSED")} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
+      <Detail record={errRecord("ERROR", true)} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
     );
     expect(screen.getByRole("button", { name: /^restore$/i })).toBeInTheDocument();
   });

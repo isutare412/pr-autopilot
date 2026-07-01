@@ -7,6 +7,7 @@ type Verdict = "approve" | "comment";
 interface ActionsBarProps {
   draft: UiDraft;
   state: string;
+  dismissed?: boolean;
   postVerdict?: Verdict;
   onApprove: (verdict: Verdict) => void;
   onDismiss: () => void;
@@ -37,7 +38,7 @@ function postSummary(draft: UiDraft, verdict: Verdict): string {
   return `${content} · ${verdict === "comment" ? "re-requests you" : "approves, done"}`;
 }
 
-export function ActionsBar({ draft, state, postVerdict, onApprove, onDismiss, onRestore, onDelete, onFeedback }: ActionsBarProps) {
+export function ActionsBar({ draft, state, dismissed, postVerdict, onApprove, onDismiss, onRestore, onDelete, onFeedback }: ActionsBarProps) {
   const [feedbackText, setFeedbackText] = useState("");
   const [verdict, setVerdict] = useState<Verdict>(postVerdict ?? defaultVerdict(draft));
 
@@ -45,7 +46,7 @@ export function ActionsBar({ draft, state, postVerdict, onApprove, onDismiss, on
   // from here — the post path resumes and skips already-sent items.
   const isError = state === "ERROR";
   const canPost = state === "NEEDS_REVIEW" || isError;
-  const hidden = state === "DISMISSED";
+  const hidden = !!dismissed;
   const pretty = state.toLowerCase().replace(/_/g, " ");
 
   function handleSend() {

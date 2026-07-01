@@ -15,11 +15,13 @@ const api = vi.hoisted(() => ({
   openPreferences: vi.fn(),
   onRecordsChanged: vi.fn(() => () => {}),
   onFocusPr: vi.fn(() => () => {}),
-  getSettings: vi.fn(async () => ({ operatingMode: "supervised", pollIntervalSec: 600 })),
+  getSettings: vi.fn(async () => ({ operatingMode: "supervised", pollIntervalSec: 600, showDone: false, showDismissed: false })),
   setMode: vi.fn(async () => {}),
   onModeChanged: vi.fn(() => () => {}),
   setPollInterval: vi.fn(async () => {}),
   onPollIntervalChanged: vi.fn((_fn: (sec: number) => void) => (() => {})),
+  setQueueFilters: vi.fn(async () => {}),
+  onQueueFiltersChanged: vi.fn(() => () => {}),
 }));
 vi.mock("../../src/renderer/src/api", () => ({ api }));
 
@@ -54,7 +56,7 @@ describe("App — Poll now", () => {
 
 describe("App — mode switch", () => {
   it("reflects the loaded mode and calls api.setMode on click", async () => {
-    api.getSettings.mockResolvedValue({ operatingMode: "disabled", pollIntervalSec: 600 });
+    api.getSettings.mockResolvedValue({ operatingMode: "disabled", pollIntervalSec: 600, showDone: false, showDismissed: false });
     render(<App />);
     // "disabled" differs from the useState default "supervised", so this can
     // only be true if the api.getSettings() load actually drove state.
@@ -74,17 +76,40 @@ describe("App — mode switch", () => {
   });
 });
 
-describe("App — Show hidden", () => {
-  it("hides DISMISSED rows until 'Show hidden' is toggled", async () => {
-    api.list.mockResolvedValue({ items: [
-      { key: "k1", number: 1, repo: "r", title: "Active row", state: "NEEDS_REVIEW", mode: "first-review", counts: null, updatedAt: "" },
-      { key: "k2", number: 2, repo: "r", title: "Hidden row", state: "DISMISSED", mode: "first-review", counts: null, updatedAt: "" },
-    ] as UiRow[] });
+describe("App — queue filters", () => {
+  const rows = [
+    { key: "k1", number: 1, repo: "r", title: "Active row", state: "NEEDS_REVIEW", mode: "first-review", counts: null, updatedAt: "" },
+    { key: "k2", number: 2, repo: "r", title: "Done row", state: "DONE", mode: "first-review", counts: null, updatedAt: "" },
+    { key: "k3", number: 3, repo: "r", title: "Dismissed row", state: "NEEDS_REVIEW", mode: "first-review", counts: null, updatedAt: "", dismissed: true },
+  ] as UiRow[];
+
+  it("hides DONE and dismissed rows by default", async () => {
+    api.list.mockResolvedValue({ items: rows });
     render(<App />);
     await waitFor(() => expect(screen.getByText("Active row")).toBeInTheDocument());
-    expect(screen.queryByText("Hidden row")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /show hidden/i }));
-    await waitFor(() => expect(screen.getByText("Hidden row")).toBeInTheDocument());
+    expect(screen.queryByText("Done row")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dismissed row")).not.toBeInTheDocument();
+  });
+
+  it("reveals only DONE when Show done is checked", async () => {
+    api.list.mockResolvedValue({ items: rows });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("Active row")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /show done/i }));
+    await waitFor(() => expect(screen.getByText("Done row")).toBeInTheDocument());
+    expect(screen.queryByText("Dismissed row")).not.toBeInTheDocument();
+    expect(api.setQueueFilters).toHaveBeenCalledWith({ showDone: true, showDismissed: false });
+  });
+
+  it("reveals only dismissed when Show dismissed is checked", async () => {
+    api.list.mockResolvedValue({ items: rows });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("Active row")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /show dismissed/i }));
+    await waitFor(() => expect(screen.getByText("Dismissed row")).toBeInTheDocument());
+    expect(screen.queryByText("Done row")).not.toBeInTheDocument();
   });
 });
 
@@ -98,7 +123,7 @@ describe("App — settings gear", () => {
 
 describe("App — poll interval", () => {
   it("reflects the loaded pollIntervalSec in the dropdown", async () => {
-    api.getSettings.mockResolvedValue({ operatingMode: "supervised", pollIntervalSec: 900 });
+    api.getSettings.mockResolvedValue({ operatingMode: "supervised", pollIntervalSec: 900, showDone: false, showDismissed: false });
     render(<App />);
     const select = () => screen.getByRole("combobox", { name: /poll interval/i }) as HTMLSelectElement;
     await waitFor(() => expect(select().value).toBe("900"));
@@ -107,7 +132,7 @@ describe("App — poll interval", () => {
   it("shows a non-preset interval as the nearest preset without rewriting it", async () => {
     // 420s has no preset; nearest is 300 (5m). It must display as 300 but never
     // be silently persisted back — only an explicit user choice calls setPollInterval.
-    api.getSettings.mockResolvedValue({ operatingMode: "supervised", pollIntervalSec: 420 });
+    api.getSettings.mockResolvedValue({ operatingMode: "supervised", pollIntervalSec: 420, showDone: false, showDismissed: false });
     render(<App />);
     const select = () => screen.getByRole("combobox", { name: /poll interval/i }) as HTMLSelectElement;
     await waitFor(() => expect(select().value).toBe("300"));

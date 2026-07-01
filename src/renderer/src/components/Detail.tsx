@@ -85,7 +85,7 @@ export function Detail({ record, onToggle, onEdit, onApprove, onDismiss, onResto
             </div>
             <pre className="error-msg">{e.message}</pre>
             <div className="actions-inline">
-              {record.state === "DISMISSED" ? (
+              {record.dismissed ? (
                 <button type="button" className="del-btn" onClick={onRestore}>Restore</button>
               ) : (
                 <button type="button" className="del-btn" onClick={onDismiss}>Dismiss</button>
@@ -125,6 +125,7 @@ export function Detail({ record, onToggle, onEdit, onApprove, onDismiss, onResto
         key={record.key}
         draft={draft}
         state={record.state}
+        dismissed={record.dismissed}
         postVerdict={record.postVerdict}
         onApprove={onApprove}
         onDismiss={onDismiss}

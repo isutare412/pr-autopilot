@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import type { UiRecord, UiRow } from "./types";
 import { QueueRow } from "./components/QueueRow";
+import { QueueFilter } from "./components/QueueFilter";
 import { Detail } from "./components/Detail";
+import { isQueueVisible } from "./visibility";
 
 type OperatingMode = "disabled" | "supervised" | "automated";
 const MODE_LABEL: Record<OperatingMode, string> = {
@@ -25,7 +27,8 @@ export function App() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [record, setRecord] = useState<UiRecord | null>(null);
   const [polling, setPolling] = useState(false);
-  const [showHidden, setShowHidden] = useState(false);
+  const [showDone, setShowDone] = useState(false);
+  const [showDismissed, setShowDismissed] = useState(false);
   const [mode, setMode] = useState<OperatingMode>("supervised");
   const [pollIntervalSec, setPollIntervalSec] = useState(600);
 
@@ -89,15 +92,27 @@ export function App() {
     }
   }
 
+  function applyFilters(next: { showDone: boolean; showDismissed: boolean }) {
+    setShowDone(next.showDone);
+    setShowDismissed(next.showDismissed);
+    api.setQueueFilters(next);
+  }
+
   useEffect(() => {
     loadList();
-    api.getSettings().then((s: { operatingMode?: OperatingMode; pollIntervalSec?: number }) => {
+    api.getSettings().then((s: { operatingMode?: OperatingMode; pollIntervalSec?: number; showDone?: boolean; showDismissed?: boolean }) => {
       if (s?.operatingMode) setMode(s.operatingMode);
       if (typeof s?.pollIntervalSec === "number") setPollIntervalSec(s.pollIntervalSec);
+      if (typeof s?.showDone === "boolean") setShowDone(s.showDone);
+      if (typeof s?.showDismissed === "boolean") setShowDismissed(s.showDismissed);
     }).catch((e) => console.error("[getSettings]", e));
     // Subscribe once; use ref so these closures always read the current selection.
     const offMode = api.onModeChanged((m: string) => setMode(m as OperatingMode));
     const offInterval = api.onPollIntervalChanged((sec: number) => setPollIntervalSec(sec));
+    const offFilters = api.onQueueFiltersChanged((f: { showDone: boolean; showDismissed: boolean }) => {
+      setShowDone(f.showDone);
+      setShowDismissed(f.showDismissed);
+    });
     const off1 = api.onRecordsChanged(() => {
       loadList();
       if (selectedKeyRef.current) loadDetail(selectedKeyRef.current);
@@ -106,14 +121,16 @@ export function App() {
     return () => {
       offMode();
       offInterval();
+      offFilters();
       off1();
       off2();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const hiddenCount = rows.filter((r) => r.state === "DISMISSED").length;
-  const visibleRows = showHidden ? rows : rows.filter((r) => r.state !== "DISMISSED");
+  const doneCount = rows.filter((r) => r.state === "DONE").length;
+  const dismissedCount = rows.filter((r) => r.dismissed).length;
+  const visibleRows = rows.filter((r) => isQueueVisible(r, { showDone, showDismissed }));
 
   return (
     <>
@@ -197,13 +214,13 @@ export function App() {
                 <option key={p} value={p}>{INTERVAL_LABEL[p]}</option>
               ))}
             </select>
-            <button
-              className="hidden-toggle"
-              onClick={() => setShowHidden((v) => !v)}
-              aria-pressed={showHidden}
-            >
-              {showHidden ? "Hide hidden" : `Show hidden${hiddenCount ? ` (${hiddenCount})` : ""}`}
-            </button>
+            <QueueFilter
+              showDone={showDone}
+              showDismissed={showDismissed}
+              doneCount={doneCount}
+              dismissedCount={dismissedCount}
+              onChange={applyFilters}
+            />
           </div>
           <div className="queue-list">
             {visibleRows.length === 0 ? (

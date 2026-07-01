@@ -38,6 +38,7 @@ export interface UiRow {
   mode: string;
   counts: UiDraft["counts"] | null;
   updatedAt: string;
+  dismissed?: boolean;
 }
 
 export interface UiRecord {
@@ -65,4 +66,5 @@ export interface UiRecord {
   generatedAt: string | null;
   updatedAt: string;
   doneAt: string | null;
+  dismissed?: boolean;
 }

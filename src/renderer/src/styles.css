@@ -95,7 +95,7 @@ body {
   border-color: var(--line);
   cursor: default;
 }
-.hidden-toggle {
+.filter-btn {
   font: 600 11px/1 var(--ui);
   color: var(--muted);
   background: transparent;
@@ -104,13 +104,14 @@ body {
   padding: 6px 12px;
   cursor: pointer;
 }
-.hidden-toggle:hover {
+.filter-btn:hover {
   color: var(--fg);
   border-color: var(--accent-dim);
 }
-.hidden-toggle[aria-pressed="true"] {
+.filter-btn[aria-expanded="true"] {
   color: var(--accent);
   border-color: var(--accent-dim);
+  background: rgba(70, 198, 192, 0.1);
 }
 
 .interval-select {
@@ -292,10 +293,6 @@ body {
   padding: 9px 12px;
   border-bottom: 1px solid var(--line);
 }
-.queue-toolbar .hidden-toggle {
-  margin-left: auto;
-}
-
 .queue-list {
   flex: 1 1 auto;
   min-height: 0;
@@ -484,6 +481,64 @@ body {
   text-decoration: line-through;
 }
 
+.row.dismissed {
+  opacity: 0.55;
+}
+.row.dismissed .row-state {
+  color: var(--dismiss);
+}
+
+.queue-filter {
+  position: relative;
+  margin-left: auto;
+}
+.filter-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+  animation: menu-in 120ms ease;
+}
+.filter-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  font: 12px/1.3 var(--ui);
+  color: var(--fg);
+  cursor: pointer;
+}
+.filter-opt:hover {
+  background: #1b212a;
+}
+.filter-opt input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes pulse {
   50% {
     opacity: 0.45;
@@ -506,6 +561,10 @@ body {
   }
 
   .act-line.act-active::after {
+    animation: none;
+  }
+
+  .filter-menu {
     animation: none;
   }
 }
