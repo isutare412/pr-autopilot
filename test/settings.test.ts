@@ -71,4 +71,14 @@ describe("settings", () => {
     writeFileSync(join(dir, "settings.json"), JSON.stringify({ operatingMode: "turbo" }));
     expect(loadSettings(dir).operatingMode).toBe("supervised");
   });
+
+  it("defaults the queue filters to hidden and round-trips them", () => {
+    expect(DEFAULT_SETTINGS.showDone).toBe(false);
+    expect(DEFAULT_SETTINGS.showDismissed).toBe(false);
+    const dir = mkdtempSync(join(tmpdir(), "pa-"));
+    saveSettings(dir, { ...DEFAULT_SETTINGS, showDone: true, showDismissed: true });
+    const s = loadSettings(dir);
+    expect(s.showDone).toBe(true);
+    expect(s.showDismissed).toBe(true);
+  });
 });

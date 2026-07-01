@@ -10,6 +10,8 @@ export const Settings = z.object({
   operatingMode: OperatingMode.default("supervised"),
   automatedConfirmed: z.boolean().default(false),
   pollIntervalSec: z.number().int().positive().default(600),
+  showDone: z.boolean().default(false),
+  showDismissed: z.boolean().default(false),
   genConcurrency: z.number().int().positive().default(2),
   retentionDays: z.number().int().positive().default(30),
   claudeConfigDir: z.string().default("~/.claude"),
