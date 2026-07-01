@@ -44,8 +44,12 @@ export async function execute(
   gh: Gh, rec: PrRecord, login: string, nowIso: string,
   onProgress?: (p: PostProgress) => void,
 ): Promise<PrRecord> {
-  // Pre-flight staleness check.
-  const liveSha = await gh.headSha(rec.owner, rec.repo, rec.number);
+  // Pre-flight: never post to a PR that is no longer open (merged or closed),
+  // then the head-SHA staleness check. Both come from one gh call.
+  const { state: prState, headSha: liveSha } = await gh.prStatus(rec.owner, rec.repo, rec.number);
+  if (prState !== "OPEN") {
+    return { ...rec, state: "CLOSED", updatedAt: nowIso };
+  }
   if (liveSha !== rec.headSha) {
     return { ...rec, state: "STALE", updatedAt: nowIso };
   }

@@ -15,6 +15,7 @@ function mkOrch() {
     view: async () => ({ title: "t", body: "", author: "kim", baseRefName: "develop", headRefName: "f", headRefOid: "SHA1", state: "OPEN" }),
     headSha: async () => "SHA1",
     reviewThreads: async () => [],
+    prStatus: async () => ({ state: "OPEN", headSha: "SHA1" }),
     postReview: vi.fn(async () => ({ html_url: "http://x/r/1" })),
     requestReviewer: vi.fn(async () => {}),
   };
