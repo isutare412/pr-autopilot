@@ -472,15 +472,6 @@ body {
   color: var(--stale);
 }
 
-.state-DISMISSED {
-  opacity: 0.5;
-}
-
-.state-DISMISSED .row-state {
-  color: var(--dismiss);
-  text-decoration: line-through;
-}
-
 .row.dismissed {
   opacity: 0.55;
 }
