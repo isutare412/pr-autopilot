@@ -74,7 +74,7 @@ export class Store {
 
   prune(retentionDays: number, nowIso: string): string[] {
     const cutoff = new Date(nowIso).getTime() - retentionDays * 86400_000;
-    const terminal = new Set(["DONE", "POSTED_AWAITING_AUTHOR", "ERROR"]);
+    const terminal = new Set(["DONE", "POSTED_AWAITING_AUTHOR", "ERROR", "CLOSED"]);
     const pruned: string[] = [];
     for (const r of this.list()) {
       if (!terminal.has(r.state) && !r.dismissed) continue;

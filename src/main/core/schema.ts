@@ -30,7 +30,7 @@ export type OperatingMode = z.infer<typeof OperatingMode>;
 
 export const PrState = z.enum([
   "DISCOVERED", "GENERATING", "NEEDS_REVIEW", "POSTING",
-  "POSTED_AWAITING_AUTHOR", "DONE", "STALE", "ERROR",
+  "POSTED_AWAITING_AUTHOR", "DONE", "STALE", "ERROR", "CLOSED",
 ]);
 export type PrState = z.infer<typeof PrState>;
 
