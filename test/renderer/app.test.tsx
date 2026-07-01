@@ -29,6 +29,7 @@ import { App } from "../../src/renderer/src/App";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  document.title = "";
   api.list.mockResolvedValue({ items: [] });
 });
 afterEach(cleanup);
@@ -110,6 +111,25 @@ describe("App — queue filters", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /show dismissed/i }));
     await waitFor(() => expect(screen.getByText("Dismissed row")).toBeInTheDocument());
     expect(screen.queryByText("Done row")).not.toBeInTheDocument();
+  });
+});
+
+describe("App — window title", () => {
+  it("does not count a dismissed NEEDS_REVIEW as 'to review'", async () => {
+    api.list.mockResolvedValue({ items: [
+      { key: "k1", number: 1, repo: "r", title: "Dismissed NR", state: "NEEDS_REVIEW", mode: "first-review", counts: null, updatedAt: "", dismissed: true },
+    ] as UiRow[] });
+    render(<App />);
+    await waitFor(() => expect(document.title).toBe("PR Autopilot"));
+  });
+
+  it("counts only visible NEEDS_REVIEW rows in the title", async () => {
+    api.list.mockResolvedValue({ items: [
+      { key: "k1", number: 1, repo: "r", title: "Active NR", state: "NEEDS_REVIEW", mode: "first-review", counts: null, updatedAt: "" },
+      { key: "k2", number: 2, repo: "r", title: "Dismissed NR", state: "NEEDS_REVIEW", mode: "first-review", counts: null, updatedAt: "", dismissed: true },
+    ] as UiRow[] });
+    render(<App />);
+    await waitFor(() => expect(document.title).toBe("PR Autopilot — 1 to review"));
   });
 });
 

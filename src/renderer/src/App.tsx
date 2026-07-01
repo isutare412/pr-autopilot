@@ -40,8 +40,6 @@ export function App() {
     const result = await api.list();
     const items: UiRow[] = (result as { items: UiRow[] }).items ?? [];
     setRows(items);
-    const needsReview = items.filter((r) => r.state === "NEEDS_REVIEW").length;
-    document.title = needsReview > 0 ? `PR Autopilot — ${needsReview} to review` : "PR Autopilot";
   }
 
   async function loadDetail(key: string) {
@@ -131,6 +129,13 @@ export function App() {
   const doneCount = rows.filter((r) => r.state === "DONE").length;
   const dismissedCount = rows.filter((r) => r.dismissed).length;
   const visibleRows = rows.filter((r) => isQueueVisible(r, { showDone, showDismissed }));
+
+  // Title counts only reviews that actually await me: visible NEEDS_REVIEW.
+  // A dismissed (or filtered-out) review is not "to review" — same rule as the tray dot.
+  useEffect(() => {
+    const n = rows.filter((r) => r.state === "NEEDS_REVIEW" && isQueueVisible(r, { showDone, showDismissed })).length;
+    document.title = n > 0 ? `PR Autopilot — ${n} to review` : "PR Autopilot";
+  }, [rows, showDone, showDismissed]);
 
   return (
     <>
