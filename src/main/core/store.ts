@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { PrRecord, fileKey } from "./schema";
+import { PrRecord, fileKey, migrateRecord } from "./schema";
 
 function parseKey(key: string): { host: string; owner: string; repo: string; number: number } {
   const m = key.match(/^([^/]+)\/([^/]+)\/([^/]+)#(\d+)$/);
@@ -29,7 +29,7 @@ export class Store {
   get(key: string): PrRecord | null {
     const f = this.fileFor(key);
     if (!existsSync(f)) return null;
-    return PrRecord.parse(JSON.parse(readFileSync(f, "utf8")));
+    return PrRecord.parse(migrateRecord(JSON.parse(readFileSync(f, "utf8"))));
   }
 
   put(rec: PrRecord): void {
@@ -49,7 +49,7 @@ export class Store {
   list(): PrRecord[] {
     return readdirSync(this.prsDir)
       .filter((f) => f.endsWith(".json"))
-      .map((f) => PrRecord.parse(JSON.parse(readFileSync(join(this.prsDir, f), "utf8"))));
+      .map((f) => PrRecord.parse(migrateRecord(JSON.parse(readFileSync(join(this.prsDir, f), "utf8")))));
   }
 
   private writeIndex(): void {
@@ -74,7 +74,7 @@ export class Store {
 
   prune(retentionDays: number, nowIso: string): string[] {
     const cutoff = new Date(nowIso).getTime() - retentionDays * 86400_000;
-    const terminal = new Set(["DONE", "DISMISSED", "POSTED_AWAITING_AUTHOR", "ERROR"]);
+    const terminal = new Set(["DONE", "POSTED_AWAITING_AUTHOR", "ERROR"]);
     const pruned: string[] = [];
     for (const r of this.list()) {
       if (!terminal.has(r.state) && !r.dismissed) continue;

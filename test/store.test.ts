@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../src/main/core/store";
@@ -79,12 +79,34 @@ describe("Store", () => {
     expect(order).toEqual(["a", "a-caught", "b"]);
   });
 
-  it("prune removes DISMISSED and POSTED_AWAITING_AUTHOR records too", () => {
+  it("prune removes dismissed and POSTED_AWAITING_AUTHOR records too", () => {
     const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
-    s.put(rec({ key: "git.linecorp.com/O/R#70", number: 70, state: "DISMISSED", doneAt: "2026-01-01T00:00:00Z" }));
+    s.put(rec({ key: "git.linecorp.com/O/R#70", number: 70, state: "DONE", dismissed: true, doneAt: "2026-01-01T00:00:00Z" }));
     s.put(rec({ key: "git.linecorp.com/O/R#71", number: 71, state: "POSTED_AWAITING_AUTHOR", doneAt: null, updatedAt: "2026-01-01T00:00:00Z" }));
     const pruned = s.prune(30, "2026-03-01T00:00:00Z").sort();
     expect(pruned).toEqual(["git.linecorp.com/O/R#70", "git.linecorp.com/O/R#71"]);
+  });
+
+  it("migrates a legacy DISMISSED record to the dismissed flag, recovering state from dismissedFrom", () => {
+    const dir = mkdtempSync(join(tmpdir(), "store-"));
+    const s = new Store(dir);
+    const legacy = { ...rec({ key: "git.linecorp.com/O/R#80", number: 80 }), state: "DISMISSED", dismissedFrom: "DONE" };
+    writeFileSync(join(dir, "prs", "git.linecorp.com__O__R__80.json"), JSON.stringify(legacy));
+    const out = s.get("git.linecorp.com/O/R#80")!;
+    expect(out.state).toBe("DONE");
+    expect(out.dismissed).toBe(true);
+  });
+
+  it("migrates a legacy DISMISSED record without dismissedFrom by inferring state", () => {
+    const dir = mkdtempSync(join(tmpdir(), "store-"));
+    const s = new Store(dir);
+    const legacy = { ...rec({ key: "git.linecorp.com/O/R#81", number: 81 }), state: "DISMISSED",
+      postResult: { reviewUrl: "u", postedAt: "t", resolvedThreadIds: [] } };
+    delete (legacy as Record<string, unknown>).dismissedFrom;
+    writeFileSync(join(dir, "prs", "git.linecorp.com__O__R__81.json"), JSON.stringify(legacy));
+    const out = s.get("git.linecorp.com/O/R#81")!;
+    expect(out.state).toBe("POSTED_AWAITING_AUTHOR");
+    expect(out.dismissed).toBe(true);
   });
 
   it("prune removes an old ERROR record (falls back to updatedAt; doneAt null)", () => {

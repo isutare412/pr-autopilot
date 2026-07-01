@@ -30,7 +30,7 @@ export type OperatingMode = z.infer<typeof OperatingMode>;
 
 export const PrState = z.enum([
   "DISCOVERED", "GENERATING", "NEEDS_REVIEW", "POSTING",
-  "POSTED_AWAITING_AUTHOR", "DONE", "STALE", "ERROR", "DISMISSED",
+  "POSTED_AWAITING_AUTHOR", "DONE", "STALE", "ERROR",
 ]);
 export type PrState = z.infer<typeof PrState>;
 
@@ -135,6 +135,24 @@ export const PrRecord = z.object({
   doneAt: z.string().nullable(),
 });
 export type PrRecord = z.infer<typeof PrRecord>;
+
+/** Normalize a raw on-disk record before parsing. Converts the removed
+ *  "DISMISSED" pseudo-state to `{ dismissed: true, state: <recovered> }`,
+ *  recovering the lifecycle state from the obsolete `dismissedFrom` snapshot
+ *  when present, else inferring it the way the old restore() did. */
+export function migrateRecord(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const r = raw as Record<string, unknown>;
+  if (r.state === "DISMISSED") {
+    const inferred = r.postResult ? "POSTED_AWAITING_AUTHOR"
+      : r.draft ? "NEEDS_REVIEW"
+      : r.error ? "ERROR"
+      : "GENERATING";
+    r.state = (typeof r.dismissedFrom === "string" ? r.dismissedFrom : undefined) ?? inferred;
+    r.dismissed = true;
+  }
+  return r;
+}
 
 export function prKey(host: string, owner: string, repo: string, number: number): string {
   return `${host}/${owner}/${repo}#${number}`;
