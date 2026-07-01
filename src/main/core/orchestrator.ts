@@ -2,7 +2,7 @@ import { Store } from "./store";
 import { JobQueue } from "./queue";
 import { Gh, SearchPr } from "./gh";
 import { execute } from "./executor";
-import { decideWork, authorAwaitingReview } from "./poller";
+import { decideWork, authorAwaitingReview, keysToProbe } from "./poller";
 import { PrRecord, Draft, Mode, Language, Effort, OperatingMode, prKey } from "./schema";
 
 export interface OrchestratorDeps {
@@ -158,6 +158,27 @@ export class Orchestrator {
         }
       } catch (e) {
         console.error(`[poll] ${key} read failed:`, e);
+      }
+    }
+
+    // Sweep lingering drafts whose PR dropped out of the open search because it
+    // was merged or closed — mark them CLOSED so we never post to them and the
+    // queue self-cleans. Still-open (merely unrequested) PRs are left as-is.
+    const openKeys = new Set(queue.map((pr) => prKey(this.d.host, pr.owner, pr.repo, pr.number)));
+    for (const key of keysToProbe(existing, openKeys)) {
+      const rec = existing.get(key)!;
+      try {
+        const state = await this.d.gh.prState(rec.owner, rec.repo, rec.number);
+        if (state !== "OPEN") {
+          await this.store.withLock(key, async () => {
+            const cur = this.store.get(key);
+            if (cur && (cur.state === "NEEDS_REVIEW" || cur.state === "POSTED_AWAITING_AUTHOR")) {
+              this.store.put({ ...cur, state: "CLOSED", updatedAt: this.d.nowIso() });
+            }
+          });
+        }
+      } catch (e) {
+        console.error(`[poll] ${key} state probe failed:`, e);
       }
     }
 

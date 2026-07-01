@@ -16,6 +16,8 @@ function mkOrch() {
     headSha: async () => "SHA1",
     reviewThreads: async () => [],
     prStatus: async () => ({ state: "OPEN", headSha: "SHA1" }),
+    searchReviewRequested: async () => [],
+    prState: async () => "OPEN",
     postReview: vi.fn(async () => ({ html_url: "http://x/r/1" })),
     requestReviewer: vi.fn(async () => {}),
   };
@@ -208,5 +210,31 @@ describe("Orchestrator — automated mode", () => {
 
     expect(store.get(key)!.state).toBe("CLOSED");
     expect(notifier.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("Orchestrator — poll sweep", () => {
+  it("marks a lingering record CLOSED when its PR is merged", async () => {
+    const { orch, store } = mkOrch();
+    const key = seed(store, 30, "NEEDS_REVIEW", { draft });
+    (orch as any).d.gh.prState = async () => "MERGED";
+    await orch.runPoll();
+    expect(store.get(key)!.state).toBe("CLOSED");
+  });
+
+  it("leaves a lingering record untouched when its PR is still open", async () => {
+    const { orch, store } = mkOrch();
+    const key = seed(store, 31, "NEEDS_REVIEW", { draft });
+    (orch as any).d.gh.prState = async () => "OPEN";
+    await orch.runPoll();
+    expect(store.get(key)!.state).toBe("NEEDS_REVIEW");
+  });
+
+  it("leaves a record unchanged when the state probe throws", async () => {
+    const { orch, store } = mkOrch();
+    const key = seed(store, 32, "NEEDS_REVIEW", { draft });
+    (orch as any).d.gh.prState = async () => { throw new Error("boom"); };
+    await orch.runPoll();
+    expect(store.get(key)!.state).toBe("NEEDS_REVIEW");
   });
 });
