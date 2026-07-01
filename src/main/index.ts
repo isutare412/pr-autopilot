@@ -11,7 +11,7 @@ import { resolvePath, expandTilde, getPluginDir, getDataDir } from "./paths";
 import { registerIpc, watchStoreForChanges } from "./ipc";
 import { createTray, refreshTray, TrayHandlers } from "./tray";
 import { showMain, showPreferences, openExternal } from "./windows";
-import { hideDock, applyLoginItem } from "./lifecycle";
+import { applyLoginItem } from "./lifecycle";
 import { installAppMenu } from "./menu";
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -19,7 +19,6 @@ app.on("second-instance", () => showMain());
 
 app.whenReady().then(async () => {
   try {
-    hideDock();
     const dataDir = getDataDir();
     let settings = loadSettings(dataDir);
 
