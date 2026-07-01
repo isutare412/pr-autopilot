@@ -20,6 +20,7 @@ export const api = {
     const items = deps.store.list().map((r) => ({
       key: r.key, number: r.number, repo: r.repo, title: r.title, state: r.state,
       mode: r.mode, counts: r.draft?.counts ?? null, updatedAt: r.updatedAt,
+      dismissed: !!r.dismissed,
     }));
     return { items };
   },
@@ -76,10 +77,8 @@ export const api = {
   dismiss(deps: ApiDeps, key: string): PrRecord | Err {
     const rec = deps.store.get(key);
     if (!rec) return NF;
-    rec.state = "DISMISSED";
-    const now = deps.nowIso();
-    rec.updatedAt = now;
-    rec.doneAt = now;
+    rec.dismissed = true;          // view flag only — lifecycle state is untouched
+    rec.updatedAt = deps.nowIso();
     deps.store.put(rec);
     return rec;
   },
@@ -87,18 +86,9 @@ export const api = {
   restore(deps: ApiDeps, key: string): PrRecord | Err {
     const rec = deps.store.get(key);
     if (!rec) return NF;
-    const regenerate = !rec.postResult && !rec.draft && !rec.error;
-    rec.state = rec.postResult
-      ? "POSTED_AWAITING_AUTHOR"
-      : rec.draft
-        ? "NEEDS_REVIEW"
-        : rec.error
-          ? "ERROR"
-          : "GENERATING";
-    rec.doneAt = null;
+    rec.dismissed = false;         // unhide; the next poll re-evaluates the real state
     rec.updatedAt = deps.nowIso();
     deps.store.put(rec);
-    if (regenerate) deps.enqueueGen(key);
     return rec;
   },
 

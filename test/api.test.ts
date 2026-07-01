@@ -85,11 +85,23 @@ describe("api", () => {
     expect(rec.postVerdict).toBe("comment");
   });
 
-  it("dismiss sets DISMISSED", () => {
+  it("dismiss sets the dismissed flag and preserves lifecycle state", () => {
     const { deps } = mkDeps();
     const out = api.dismiss(deps, "git.linecorp.com/O/R#65") as PrRecord;
-    expect(out.state).toBe("DISMISSED");
-    expect(out.doneAt).toBe("2026-06-29T00:00:00Z");
+    expect(out.dismissed).toBe(true);
+    expect(out.state).toBe("NEEDS_REVIEW"); // unchanged from the seed
+    expect(deps.store.get("git.linecorp.com/O/R#65")!.dismissed).toBe(true);
+  });
+
+  it("dismiss preserves a DONE record's state (no longer becomes DISMISSED)", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("git.linecorp.com/O/R#65")!;
+    rec.state = "DONE";
+    rec.postResult = { reviewUrl: "u", postedAt: "t", resolvedThreadIds: [] };
+    deps.store.put(rec);
+    const out = api.dismiss(deps, "git.linecorp.com/O/R#65") as PrRecord;
+    expect(out.dismissed).toBe(true);
+    expect(out.state).toBe("DONE");
   });
 
   it("returns error for unknown key", () => {
@@ -104,45 +116,23 @@ describe("api", () => {
     expect(posts).toEqual([]);
   });
 
-  it("restore returns a draft record to NEEDS_REVIEW and clears doneAt", () => {
+  it("restore clears the dismissed flag and preserves lifecycle state", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("git.linecorp.com/O/R#65")!;
+    rec.state = "DONE";
+    rec.dismissed = true;
+    deps.store.put(rec);
+    const out = api.restore(deps, "git.linecorp.com/O/R#65") as PrRecord;
+    expect(out.dismissed).toBe(false);
+    expect(out.state).toBe("DONE");
+    expect(deps.store.get("git.linecorp.com/O/R#65")!.dismissed).toBe(false);
+  });
+
+  it("list includes the dismissed flag for each row", () => {
     const { deps } = mkDeps();
     api.dismiss(deps, "git.linecorp.com/O/R#65");
-    const out = api.restore(deps, "git.linecorp.com/O/R#65") as PrRecord;
-    expect(out.state).toBe("NEEDS_REVIEW");
-    expect(out.doneAt).toBeNull();
-    expect(out.updatedAt).toBe("2026-06-29T00:00:00Z");
-  });
-
-  it("restore derives POSTED_AWAITING_AUTHOR when a postResult exists", () => {
-    const { deps } = mkDeps();
-    const rec = deps.store.get("git.linecorp.com/O/R#65")!;
-    rec.postResult = { reviewUrl: "u", postedAt: "t", resolvedThreadIds: [] };
-    rec.state = "DISMISSED";
-    deps.store.put(rec);
-    const out = api.restore(deps, "git.linecorp.com/O/R#65") as PrRecord;
-    expect(out.state).toBe("POSTED_AWAITING_AUTHOR");
-  });
-
-  it("restore regenerates when there is no draft, postResult, or error", () => {
-    const { deps, gens } = mkDeps();
-    const rec = deps.store.get("git.linecorp.com/O/R#65")!;
-    rec.draft = null;
-    rec.state = "DISMISSED";
-    deps.store.put(rec);
-    const out = api.restore(deps, "git.linecorp.com/O/R#65") as PrRecord;
-    expect(out.state).toBe("GENERATING");
-    expect(gens).toEqual(["git.linecorp.com/O/R#65"]);
-  });
-
-  it("restore derives ERROR when an error exists and no draft or postResult", () => {
-    const { deps } = mkDeps();
-    const rec = deps.store.get("git.linecorp.com/O/R#65")!;
-    rec.draft = null;
-    rec.error = { step: "generate", message: "boom" };
-    rec.state = "DISMISSED";
-    deps.store.put(rec);
-    const out = api.restore(deps, "git.linecorp.com/O/R#65") as PrRecord;
-    expect(out.state).toBe("ERROR");
+    const { items } = api.list(deps) as { items: Array<{ key: string; dismissed: boolean }> };
+    expect(items.find((r) => r.key === "git.linecorp.com/O/R#65")!.dismissed).toBe(true);
   });
 
   it("restore returns not-found for an unknown key", () => {
