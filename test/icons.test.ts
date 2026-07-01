@@ -63,4 +63,23 @@ describe("icon assets", () => {
       expect(pkg.build.extraResources).toContainEqual({ from: `build/${f}`, to: `build/${f}` });
     }
   });
+
+  it("needs-review tray templates are 18x18 and 36x36 RGBA", () => {
+    for (const base of ["trayTemplate-needsreview", "trayTemplate-needsreview-dark"]) {
+      const a = png(`build/${base}.png`);
+      expect([a.width, a.height]).toEqual([18, 18]);
+      expect(a.colorType).toBe(6); // RGBA — the red dot means true color, not template grayscale
+      const b = png(`build/${base}@2x.png`);
+      expect([b.width, b.height]).toEqual([36, 36]);
+      expect(b.colorType).toBe(6);
+    }
+  });
+
+  it("bundles the needs-review tray templates as extraResources", () => {
+    const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+    for (const f of ["trayTemplate-needsreview.png", "trayTemplate-needsreview@2x.png",
+                     "trayTemplate-needsreview-dark.png", "trayTemplate-needsreview-dark@2x.png"]) {
+      expect(pkg.build.extraResources).toContainEqual({ from: `build/${f}`, to: `build/${f}` });
+    }
+  });
 });

@@ -26,7 +26,11 @@
       { "from": "build/trayTemplate-disabled.png", "to": "build/trayTemplate-disabled.png" },
       { "from": "build/trayTemplate-disabled@2x.png", "to": "build/trayTemplate-disabled@2x.png" },
       { "from": "build/trayTemplate-automated.png", "to": "build/trayTemplate-automated.png" },
-      { "from": "build/trayTemplate-automated@2x.png", "to": "build/trayTemplate-automated@2x.png" }
+      { "from": "build/trayTemplate-automated@2x.png", "to": "build/trayTemplate-automated@2x.png" },
+      { "from": "build/trayTemplate-needsreview.png", "to": "build/trayTemplate-needsreview.png" },
+      { "from": "build/trayTemplate-needsreview@2x.png", "to": "build/trayTemplate-needsreview@2x.png" },
+      { "from": "build/trayTemplate-needsreview-dark.png", "to": "build/trayTemplate-needsreview-dark.png" },
+      { "from": "build/trayTemplate-needsreview-dark@2x.png", "to": "build/trayTemplate-needsreview-dark@2x.png" }
     ],
     "mac": {
       "icon": "build/icon.png",

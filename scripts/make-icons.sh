@@ -13,7 +13,7 @@ rsvg-convert -w 18 -h 18 "$BUILD/trayTemplate.svg" -o "$BUILD/trayTemplate.png"
 rsvg-convert -w 36 -h 36 "$BUILD/trayTemplate.svg" -o "$BUILD/trayTemplate@2x.png"
 
 # --- Mode-variant menu-bar templates ---
-for v in disabled automated; do
+for v in disabled automated needsreview needsreview-dark; do
   rsvg-convert -w 18 -h 18 "$BUILD/trayTemplate-$v.svg" -o "$BUILD/trayTemplate-$v.png"
   rsvg-convert -w 36 -h 36 "$BUILD/trayTemplate-$v.svg" -o "$BUILD/trayTemplate-$v@2x.png"
 done
@@ -29,4 +29,4 @@ magick "$BUILD/icon-master.png" "$TMP/mask.png" -alpha off -compose CopyOpacity 
 # 4) inset onto a 1024 transparent canvas (80% body) — STEP TWO; PNG32 forces RGBA
 magick "$TMP/squircle.png" -resize 824x824 -background none -gravity center -extent 1024x1024 PNG32:"$BUILD/icon.png"
 
-echo "regenerated: trayTemplate.png (18) trayTemplate@2x.png (36) icon.png (1024 RGBA)"
+echo "regenerated: trayTemplate.png (18) trayTemplate@2x.png (36) mode + needs-review variants, icon.png (1024 RGBA)"
