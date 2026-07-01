@@ -1,4 +1,4 @@
-import { Tray, Menu, nativeImage } from "electron";
+import { Tray, Menu, nativeImage, nativeTheme } from "electron";
 import { join } from "node:path";
 import type { MenuItemConstructorOptions } from "electron";
 import type { PrRecord, OperatingMode } from "./core/schema";
@@ -19,15 +19,24 @@ const MODE_LABEL: Record<OperatingMode, string> = {
   disabled: "Disabled", supervised: "Supervised", automated: "Automated",
 };
 
-export function trayIconFile(mode: OperatingMode): string {
+export function trayIconFile(mode: OperatingMode, needsReview = false, dark = false): string {
+  if (mode === "supervised" && needsReview)
+    return dark ? "trayTemplate-needsreview-dark.png" : "trayTemplate-needsreview.png";
   return mode === "disabled" ? "trayTemplate-disabled.png"
     : mode === "automated" ? "trayTemplate-automated.png"
     : "trayTemplate.png";
 }
 
-function loadTrayIcon(mode: OperatingMode) {
-  const icon = nativeImage.createFromPath(join(getPluginDir(), "..", "build", trayIconFile(mode)));
-  icon.setTemplateImage(true);
+/** True when any record awaits the user's approval. DISMISSED is a distinct state. */
+export function hasNeedsReview(records: PrRecord[]): boolean {
+  return records.some((r) => r.state === "NEEDS_REVIEW");
+}
+
+function loadTrayIcon(mode: OperatingMode, needsReview: boolean) {
+  const badged = mode === "supervised" && needsReview;
+  const file = trayIconFile(mode, needsReview, nativeTheme.shouldUseDarkColors);
+  const icon = nativeImage.createFromPath(join(getPluginDir(), "..", "build", file));
+  icon.setTemplateImage(!badged); // colored badge must NOT be a template image, or the red is dropped
   return icon.isEmpty() ? nativeImage.createEmpty() : icon;
 }
 
@@ -61,7 +70,7 @@ export function buildTrayMenu(records: PrRecord[], h: TrayHandlers): MenuItemCon
 let tray: Tray | null = null;
 
 export function createTray(getRecords: () => PrRecord[], h: TrayHandlers): Tray {
-  tray = new Tray(loadTrayIcon(h.getMode()));
+  tray = new Tray(loadTrayIcon(h.getMode(), hasNeedsReview(getRecords())));
   tray.setToolTip(`PR Autopilot — ${MODE_LABEL[h.getMode()]}`);
   const refresh = () => tray!.setContextMenu(Menu.buildFromTemplate(buildTrayMenu(getRecords(), h)));
   refresh();
@@ -70,7 +79,7 @@ export function createTray(getRecords: () => PrRecord[], h: TrayHandlers): Tray 
 
 export function refreshTray(getRecords: () => PrRecord[], h: TrayHandlers): void {
   if (!tray) return;
-  tray.setImage(loadTrayIcon(h.getMode()));
+  tray.setImage(loadTrayIcon(h.getMode(), hasNeedsReview(getRecords())));
   tray.setToolTip(`PR Autopilot — ${MODE_LABEL[h.getMode()]}`);
   tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenu(getRecords(), h)));
 }

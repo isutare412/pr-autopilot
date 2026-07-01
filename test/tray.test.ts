@@ -2,7 +2,7 @@ import { vi } from "vitest";
 vi.mock("electron", () => ({ Tray: class {}, Menu: {}, nativeImage: {} }));
 
 import { describe, it, expect } from "vitest";
-import { buildTrayMenu, trayIconFile } from "../src/main/tray";
+import { buildTrayMenu, trayIconFile, hasNeedsReview } from "../src/main/tray";
 import type { PrRecord, OperatingMode } from "../src/main/core/schema";
 
 const rec = (over: Partial<PrRecord>): PrRecord => ({
@@ -77,5 +77,25 @@ describe("trayIconFile", () => {
     expect(trayIconFile("disabled")).toBe("trayTemplate-disabled.png");
     expect(trayIconFile("supervised")).toBe("trayTemplate.png");
     expect(trayIconFile("automated")).toBe("trayTemplate-automated.png");
+  });
+
+  it("badges the supervised wheel when reviews await, picking the light/dark variant", () => {
+    expect(trayIconFile("supervised", true, false)).toBe("trayTemplate-needsreview.png");
+    expect(trayIconFile("supervised", true, true)).toBe("trayTemplate-needsreview-dark.png");
+  });
+
+  it("never badges automated or disabled, and not supervised without reviews", () => {
+    expect(trayIconFile("automated", true, true)).toBe("trayTemplate-automated.png");
+    expect(trayIconFile("disabled", true, true)).toBe("trayTemplate-disabled.png");
+    expect(trayIconFile("supervised", false, true)).toBe("trayTemplate.png");
+  });
+});
+
+describe("hasNeedsReview", () => {
+  it("is true iff some record is NEEDS_REVIEW (DISMISSED does not count)", () => {
+    expect(hasNeedsReview([])).toBe(false);
+    expect(hasNeedsReview([rec({ state: "DONE" })])).toBe(false);
+    expect(hasNeedsReview([rec({ state: "DISMISSED" })])).toBe(false);
+    expect(hasNeedsReview([rec({ state: "DONE" }), rec({ state: "NEEDS_REVIEW" })])).toBe(true);
   });
 });
