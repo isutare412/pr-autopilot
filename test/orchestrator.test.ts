@@ -197,4 +197,16 @@ describe("Orchestrator — automated mode", () => {
     expect(notifier.send).toHaveBeenCalledTimes(1);
     expect(notifier.send).toHaveBeenCalledWith("PR Autopilot", "Posted review: R #21", "http://x/O/R/pull/21");
   });
+
+  it("auto-post of a merged PR yields CLOSED and does not notify", async () => {
+    const { orch, store } = mkOrch();
+    const key = seed(store, 22, "NEEDS_REVIEW", { draft });
+    (orch as any).d.gh.prStatus = async () => ({ state: "MERGED", headSha: "SHA1" });
+    const notifier = (orch as any).d.notifier;
+
+    await orch.runPost(key, true);
+
+    expect(store.get(key)!.state).toBe("CLOSED");
+    expect(notifier.send).not.toHaveBeenCalled();
+  });
 });

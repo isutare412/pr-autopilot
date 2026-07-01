@@ -129,7 +129,8 @@ export class Orchestrator {
           (p) => { const cur = this.store.get(key); if (cur) this.store.put({ ...cur, postProgress: p }); });
         this.store.put(updated);
         if (updated.state === "STALE") this.enqueueGen(key);
-        else if (auto) await this.d.notifier.send("PR Autopilot", `Posted review: ${rec.repo} #${rec.number}`, rec.url);
+        else if (auto && (updated.state === "DONE" || updated.state === "POSTED_AWAITING_AUTHOR"))
+          await this.d.notifier.send("PR Autopilot", `Posted review: ${rec.repo} #${rec.number}`, rec.url);
       } catch (e) {
         this.store.put({ ...rec, state: "ERROR", error: { step: "post", message: String(e) }, updatedAt: this.d.nowIso() });
       }
