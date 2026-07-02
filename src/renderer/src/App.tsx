@@ -135,6 +135,17 @@ export function App() {
   const closedCount = rows.filter((r) => r.state === "CLOSED").length;
   const visibleRows = rows.filter((r) => isQueueVisible(r, { showDone, showDismissed, showClosed }));
 
+  // Never keep a PR focused in the detail pane once it has left the queue's
+  // visible set — e.g. its row was hidden by a filter toggle (from here or the
+  // tray) or by a state change. Mirrors the selection reset in dismiss()/del().
+  useEffect(() => {
+    if (selectedKey && !visibleRows.some((r) => r.key === selectedKey)) {
+      setRecord(null);
+      setSelectedKey(null);
+      selectedKeyRef.current = null;
+    }
+  }, [selectedKey, visibleRows]);
+
   // Title counts only reviews that actually await me: visible NEEDS_REVIEW.
   // A dismissed (or filtered-out) review is not "to review" — same rule as the tray dot.
   useEffect(() => {

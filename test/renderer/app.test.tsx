@@ -125,6 +125,59 @@ describe("App — queue filters", () => {
     expect(screen.queryByText("Done row")).not.toBeInTheDocument();
     expect(api.setQueueFilters).toHaveBeenCalledWith({ showDone: false, showDismissed: false, showClosed: true });
   });
+
+  it("clears the detail pane when a filter hides the selected PR", async () => {
+    // Start with Show done ON so the DONE row (k2) is visible and selectable.
+    api.getSettings.mockResolvedValue({
+      operatingMode: "supervised", pollIntervalSec: 600,
+      showDone: true, showDismissed: false, showClosed: false,
+    });
+    api.list.mockResolvedValue({ items: rows });
+    // Selecting k2 loads its record; Detail renders "View on GitHub" for any record.
+    api.get.mockResolvedValue({
+      key: "k2", number: 2, title: "Done row", url: "http://x",
+      state: "DONE", draft: null, error: null,
+    } as any);
+
+    render(<App />);
+    // The DONE row is visible because Show done was loaded as true.
+    await waitFor(() => expect(screen.getByText("Done row")).toBeInTheDocument());
+
+    // Select it — detail pane now shows the record.
+    fireEvent.click(screen.getByText("Done row"));
+    await waitFor(() => expect(screen.getByText("View on GitHub")).toBeInTheDocument());
+
+    // Turn Show done OFF — k2 leaves the queue and the detail must clear.
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /show done/i }));
+
+    await waitFor(() => expect(screen.queryByText("Done row")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Select a PR to review")).toBeInTheDocument());
+    expect(screen.queryByText("View on GitHub")).not.toBeInTheDocument();
+  });
+
+  it("keeps the selection when a filter change does not hide it", async () => {
+    api.list.mockResolvedValue({ items: rows });
+    // k1 (active NEEDS_REVIEW) is visible under default filters.
+    api.get.mockResolvedValue({
+      key: "k1", number: 1, title: "Active row", url: "http://x",
+      state: "NEEDS_REVIEW", draft: null, error: null,
+    } as any);
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("Active row")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Active row"));
+    await waitFor(() => expect(screen.getByText("View on GitHub")).toBeInTheDocument());
+
+    // Toggle an unrelated filter (Show closed) — k1 stays visible, selection intact.
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /show closed/i }));
+
+    await waitFor(() => expect(screen.getByText("Closed row")).toBeInTheDocument());
+    expect(screen.getByText("View on GitHub")).toBeInTheDocument();
+    expect(screen.queryByText("Select a PR to review")).not.toBeInTheDocument();
+  });
 });
 
 describe("App — window title", () => {
