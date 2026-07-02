@@ -35,10 +35,10 @@ export function hasNeedsReview(records: PrRecord[], filters: QueueFilters): bool
 }
 
 function loadTrayIcon(mode: OperatingMode, needsReview: boolean) {
-  const badged = mode === "supervised" && needsReview;
+  const colored = mode === "automated" || (mode === "supervised" && needsReview);
   const file = trayIconFile(mode, needsReview, nativeTheme.shouldUseDarkColors);
   const icon = nativeImage.createFromPath(join(getPluginDir(), "..", "build", file));
-  icon.setTemplateImage(!badged); // colored badge must NOT be a template image, or the red is dropped
+  icon.setTemplateImage(!colored); // colored icons (blue automated wheel, red needs-review dot) must not be templates; disabled stays a dimmed template
   return icon.isEmpty() ? nativeImage.createEmpty() : icon;
 }
 
