@@ -62,6 +62,30 @@ describe("QueueFilter", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /show closed/i }));
     expect(onChange).toHaveBeenCalledWith({ showDone: false, showDismissed: false, showClosed: true });
   });
+
+  it("'Show all' turns every option on", () => {
+    const onChange = vi.fn();
+    render(<QueueFilter {...props} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /show all/i }));
+    expect(onChange).toHaveBeenCalledWith({ showDone: true, showDismissed: true, showClosed: true });
+  });
+
+  it("'Show all' turns every option off when all are already on", () => {
+    const onChange = vi.fn();
+    render(<QueueFilter {...props} showDone showDismissed showClosed onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /show all/i }));
+    expect(onChange).toHaveBeenCalledWith({ showDone: false, showDismissed: false, showClosed: false });
+  });
+
+  it("'Show all' is checked only when all three options are on", () => {
+    const { rerender } = render(<QueueFilter {...props} showDone showDismissed showClosed />);
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    expect(screen.getByRole("checkbox", { name: /show all/i })).toBeChecked();
+    rerender(<QueueFilter {...props} showDone showDismissed={false} showClosed />);
+    expect(screen.getByRole("checkbox", { name: /show all/i })).not.toBeChecked();
+  });
 });
 
 describe("FindingCard", () => {

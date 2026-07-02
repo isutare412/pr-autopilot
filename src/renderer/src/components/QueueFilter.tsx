@@ -36,6 +36,17 @@ export function QueueFilter({ showDone, showDismissed, showClosed, doneCount, di
       </button>
       {open && (
         <div className="filter-menu" role="menu">
+          <label className="filter-opt filter-opt--all">
+            <input
+              type="checkbox"
+              checked={showDone && showDismissed && showClosed}
+              onChange={(e) =>
+                onChange({ showDone: e.target.checked, showDismissed: e.target.checked, showClosed: e.target.checked })
+              }
+            />
+            Show all
+          </label>
+          <div className="filter-sep" role="separator" />
           <label className="filter-opt">
             <input
               type="checkbox"
