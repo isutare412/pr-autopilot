@@ -16,12 +16,14 @@ interface ActionsBarProps {
   onFeedback: (text: string) => void;
 }
 
-/** The default disposition: "comment" (and re-queue yourself) whenever anything
- *  is still open, else a clean "approve". Mirrors executor.defaultVerdict. */
+/** The default disposition: "approve" when the only open items are Nit findings
+ *  (and/or resolve replies) — the nits ship on the approval; "comment" (and
+ *  re-queue yourself) when any Critical/Major/Minor finding or unresolved
+ *  follow-up/needs-call thread remains. Mirrors executor.defaultVerdict. */
 function defaultVerdict(draft: UiDraft): Verdict {
-  const hasFindings = draft.findings.some((f) => f.included);
+  const hasNonNit = draft.findings.some((f) => f.included && f.priority !== "Nit");
   const hasOpenThreads = draft.verify.some((v) => v.included && v.verdict !== "resolve");
-  return hasFindings || hasOpenThreads ? "comment" : "approve";
+  return hasNonNit || hasOpenThreads ? "comment" : "approve";
 }
 
 /** A one-line read-out of what Post will do, ending in the consequence so the

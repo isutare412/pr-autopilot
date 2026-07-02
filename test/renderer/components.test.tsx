@@ -156,6 +156,30 @@ describe("ActionsBar", () => {
     rerender(<ActionsBar {...props} state="ERROR" />);
     expect(screen.getByRole("button", { name: "Retry post" })).toBeInTheDocument();
   });
+
+  it("defaults a nit-only draft to approve", () => {
+    const onApprove = vi.fn();
+    const nitDraft = {
+      overallEn: "", counts: { critical: 0, major: 0, minor: 0, nit: 1 },
+      findings: [{ ref: "#1", path: "a.ts", line: 5, priority: "Nit", body: "b", editedBody: null, included: true, anchorable: true }],
+      verify: [],
+    };
+    render(<ActionsBar {...props} draft={nitDraft} onApprove={onApprove} state="NEEDS_REVIEW" />);
+    fireEvent.click(screen.getByRole("button", { name: /post/i }));
+    expect(onApprove).toHaveBeenCalledWith("approve");
+  });
+
+  it("defaults a draft with a non-Nit finding to comment", () => {
+    const onApprove = vi.fn();
+    const majorDraft = {
+      overallEn: "", counts: { critical: 0, major: 1, minor: 0, nit: 0 },
+      findings: [{ ref: "#1", path: "a.ts", line: 5, priority: "Major", body: "b", editedBody: null, included: true, anchorable: true }],
+      verify: [],
+    };
+    render(<ActionsBar {...props} draft={majorDraft} onApprove={onApprove} state="NEEDS_REVIEW" />);
+    fireEvent.click(screen.getByRole("button", { name: /post/i }));
+    expect(onApprove).toHaveBeenCalledWith("comment");
+  });
 });
 
 describe("DeleteButton", () => {
