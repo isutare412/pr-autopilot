@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Gh, GhRunner } from "../src/main/core/gh";
-import { execute, buildReviewPayload } from "../src/main/core/executor";
+import { execute, buildReviewPayload, defaultVerdict } from "../src/main/core/executor";
 import type { PrRecord } from "../src/main/core/schema";
 
 function baseRec(over: Partial<PrRecord> = {}): PrRecord {
@@ -90,6 +90,57 @@ describe("buildReviewPayload", () => {
     const r = baseRec();
     r.draft = { overallEn: "re-review", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
     expect(buildReviewPayload(r, "SHA1", "comment")).toBeNull();
+  });
+
+  it("approve with nit findings → APPROVE led by LGTM, nit attached inline", () => {
+    const r = baseRec();
+    r.draft!.findings = [{ ...r.draft!.findings[1], included: true }]; // Nit, anchorable
+    const p = buildReviewPayload(r, "SHA1") as any;                    // default verdict → approve
+    expect(p.event).toBe("APPROVE");
+    expect(p.body).toBe("LGTM :+1:");
+    expect(p.comments.length).toBe(1);
+    expect(p.comments[0].path).toBe("b.go");
+  });
+
+  it("approve with an unanchorable nit → body carries LGTM and the nit text", () => {
+    const r = baseRec();
+    r.draft!.findings = [{ ...r.draft!.findings[1], included: true, anchorable: false }];
+    const p = buildReviewPayload(r, "SHA1") as any;
+    expect(p.event).toBe("APPROVE");
+    expect(p.comments.length).toBe(0);
+    expect(p.body).toContain("LGTM :+1:");
+    expect(p.body).toContain("b.go");   // f2 path
+    expect(p.body).toContain("name");   // f2 body is "**[Nit]** name"
+  });
+});
+
+describe("defaultVerdict", () => {
+  const nit = () => ({ ...baseRec().draft!.findings[1], included: true }); // f2 = Nit
+  const critical = () => baseRec().draft!.findings[0];                     // f1 = Critical, included
+  const verifyItem = (verdict: "resolve" | "follow-up" | "needs-call") => ({
+    id: "v1", ref: "V1", threadNodeId: "N1", replyTargetDatabaseId: 111, path: "a.go", line: 1,
+    verdict, rationaleEn: "r", replyBody: "", included: true, editedBody: null,
+  });
+
+  it("empty draft → approve", () => {
+    const d = baseRec().draft!; d.findings = []; d.verify = [];
+    expect(defaultVerdict(d)).toBe("approve");
+  });
+  it("nit-only findings → approve", () => {
+    const d = baseRec().draft!; d.findings = [nit()]; d.verify = [];
+    expect(defaultVerdict(d)).toBe("approve");
+  });
+  it("a non-Nit finding → comment", () => {
+    const d = baseRec().draft!; d.findings = [critical()]; d.verify = [];
+    expect(defaultVerdict(d)).toBe("comment");
+  });
+  it("nit finding + open follow-up thread → comment", () => {
+    const d = baseRec().draft!; d.findings = [nit()]; d.verify = [verifyItem("follow-up")];
+    expect(defaultVerdict(d)).toBe("comment");
+  });
+  it("nit finding + resolve-only reply → approve", () => {
+    const d = baseRec().draft!; d.findings = [nit()]; d.verify = [verifyItem("resolve")];
+    expect(defaultVerdict(d)).toBe("approve");
   });
 });
 
@@ -218,5 +269,33 @@ describe("execute", () => {
     ];
     await execute(gh, r, "me", "2026-06-29T00:00:00Z");
     expect(rec.calls.some((c) => c.args.some((a) => a.includes("/comments/111/replies")))).toBe(false);
+  });
+
+  it("automated nit-only draft (no postVerdict): APPROVE + LGTM, DONE, no re-request", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const r = baseRec();
+    r.draft!.findings = [{ ...r.draft!.findings[1], included: true }]; // Nit only
+    const out = await execute(gh, r, "me", "2026-06-29T00:00:00Z");
+    const review = rec.calls.find((c) => c.args.some((a) => a.includes("/reviews")));
+    const payload = JSON.parse(review!.input!);
+    expect(payload.event).toBe("APPROVE");
+    expect(payload.body).toBe("LGTM :+1:");
+    expect(rec.calls.some((c) => c.args.includes("/repos/O/R/pulls/65/requested_reviewers"))).toBe(false);
+    expect(out.state).toBe("DONE");
+  });
+
+  it("automated nit + open follow-up thread: COMMENT + re-request, awaits author", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const r = baseRec({ mode: "re-review" });
+    r.draft!.findings = [{ ...r.draft!.findings[1], included: true }]; // Nit
+    r.draft!.verify = [
+      { id: "v2", ref: "V2", threadNodeId: "N2", replyTargetDatabaseId: 222, path: "b.go", line: 2,
+        verdict: "follow-up", rationaleEn: "still open", replyBody: "**[Major]** ...", included: true, editedBody: null },
+    ];
+    const out = await execute(gh, r, "me", "2026-06-29T00:00:00Z");
+    const review = rec.calls.find((c) => c.args.some((a) => a.includes("/reviews")));
+    expect(JSON.parse(review!.input!).event).toBe("COMMENT");
+    expect(rec.calls.some((c) => c.args.includes("/repos/O/R/pulls/65/requested_reviewers"))).toBe(true);
+    expect(out.state).toBe("POSTED_AWAITING_AUTHOR");
   });
 });

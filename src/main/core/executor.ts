@@ -1,13 +1,19 @@
 import { Gh } from "./gh";
 import { Draft, PrRecord, PostProgress, PostVerdict } from "./schema";
 
+const APPROVE_BODY = "LGTM :+1:";
+
 /** Default disposition when the user didn't pick one (automated mode, or a
- *  resumed post from before verdicts existed): "comment" (and re-queue) whenever
- *  there's anything still open, else a clean "approve". */
+ *  resumed post from before verdicts existed). Route on severity, not mere
+ *  presence: a draft whose only open items are Nit findings (and/or resolve
+ *  replies) is an "approve" — the nits ship on the approval and the author
+ *  needn't come back. Anything heavier — a Critical/Major/Minor finding, or an
+ *  unresolved follow-up/needs-call thread the author still owes — is a "comment"
+ *  that re-requests you. */
 export function defaultVerdict(draft: Draft): PostVerdict {
-  const hasFindings = draft.findings.some((f) => f.included);
+  const hasNonNit = draft.findings.some((f) => f.included && f.priority !== "Nit");
   const hasOpenThreads = draft.verify.some((v) => v.included && v.verdict !== "resolve");
-  return hasFindings || hasOpenThreads ? "comment" : "approve";
+  return hasNonNit || hasOpenThreads ? "comment" : "approve";
 }
 
 /** Build the batched review submission, or null when there's no review to post
@@ -23,7 +29,7 @@ export function buildReviewPayload(
 
   if (included.length === 0) {
     return verdict === "approve"
-      ? { event: "APPROVE", body: "LGTM :+1:", commit_id: headSha }
+      ? { event: "APPROVE", body: APPROVE_BODY, commit_id: headSha }
       : null;
   }
 
@@ -33,10 +39,16 @@ export function buildReviewPayload(
     return c;
   });
 
-  const body = unanchorable.length === 0 ? "" :
+  const unanchorableText = unanchorable.length === 0 ? "" :
     unanchorable.map((f) => `${f.path}:${f.line} — ${f.editedBody ?? f.body}`).join("\n\n");
 
-  // Approving with comments attaches the nits to an APPROVE; otherwise it's a neutral COMMENT.
+  // An APPROVE always leads with the LGTM line; a nit that can't anchor inline is
+  // appended below it so it still ships. A COMMENT carries only the finding text
+  // (unanchorable folded into the body, else empty).
+  const body = verdict === "approve"
+    ? [APPROVE_BODY, unanchorableText].filter(Boolean).join("\n\n")
+    : unanchorableText;
+
   return { event: verdict === "approve" ? "APPROVE" : "COMMENT", body, commit_id: headSha, comments };
 }
 
