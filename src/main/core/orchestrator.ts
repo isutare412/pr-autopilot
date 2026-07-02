@@ -41,7 +41,7 @@ export class Orchestrator {
     this.genQueue.submit(key, async () => {
       const rec = this.store.get(key);
       if (!rec) return;
-      await this.runGeneration(key, rec.mode, rec.headSha,
+      await this.runGeneration(key, rec.mode,
         { url: rec.url, owner: rec.owner, repo: rec.repo, number: rec.number, title: rec.title }, feedback);
     });
   };
@@ -50,21 +50,29 @@ export class Orchestrator {
     this.postQueue.submit(key, () => this.runPost(key, auto));
   };
 
-  async runGeneration(key: string, mode: Mode, sha: string, pr: SearchPr, feedback?: string): Promise<void> {
+  async runGeneration(key: string, mode: Mode, pr: SearchPr, feedback?: string): Promise<void> {
     await this.store.withLock(key, async () => {
       let rec = this.store.get(key);
       const now = this.d.nowIso();
+      // Record the live head we're about to review against, captured at generation
+      // start (the review's `gh pr diff` runs against this head). Recording a stale
+      // value here — e.g. the poll-time sha or the previous record's frozen headSha —
+      // makes every post STALE, and the STALE→regenerate recovery would then loop
+      // forever instead of catching up to the head the author pushed.
+      let headSha: string;
       if (!rec) {
         const v = await this.d.gh.view(pr.owner, pr.repo, pr.number);
+        headSha = v.headRefOid;
         rec = {
           key, host: this.d.host, owner: pr.owner, repo: pr.repo, number: pr.number,
           url: pr.url, title: v.title, author: v.author, baseRef: v.baseRefName,
-          state: "GENERATING", mode, headSha: v.headRefOid, draftVersion: 0, draft: null,
+          state: "GENERATING", mode, headSha, draftVersion: 0, draft: null,
           feedbackHistory: [], postResult: null, postProgress: null, error: null,
           discoveredAt: now, generatedAt: null, updatedAt: now, doneAt: null,
         };
       } else {
-        rec = { ...rec, state: "GENERATING", mode, updatedAt: now };
+        headSha = await this.d.gh.headSha(pr.owner, pr.repo, pr.number);
+        rec = { ...rec, state: "GENERATING", mode, headSha, updatedAt: now };
       }
       this.store.put(rec);
 
@@ -86,7 +94,7 @@ export class Orchestrator {
         const draft = await this.generate({ url: rec.url, priorDraft, feedback, language: this.d.language(), effort: this.d.effort() }, onActivity);
         const updated: PrRecord = {
           ...rec, draft, state: "NEEDS_REVIEW", draftVersion: rec.draftVersion + 1,
-          headSha: sha || rec.headSha, generatedAt: this.d.nowIso(), updatedAt: this.d.nowIso(), error: null,
+          headSha, generatedAt: this.d.nowIso(), updatedAt: this.d.nowIso(), error: null,
         };
         this.store.put(updated);
         if (this.d.operatingMode() === "automated") {
@@ -185,7 +193,7 @@ export class Orchestrator {
     const work = decideWork({ queue, existing, liveHeads, authorRepliedKeys,
       repoAllow: this.d.repoAllow, repoDeny: this.d.repoDeny, host: this.d.host });
     for (const w of work) {
-      this.genQueue.submit(w.key, () => this.runGeneration(w.key, w.mode, w.sha, w.pr));
+      this.genQueue.submit(w.key, () => this.runGeneration(w.key, w.mode, w.pr));
     }
   }
 

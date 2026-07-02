@@ -52,7 +52,7 @@ function seed(store: Store, number: number, state: PrRecord["state"], over: Part
 describe("Orchestrator", () => {
   it("runGeneration writes a NEEDS_REVIEW record with the draft", async () => {
     const { orch, store } = mkOrch();
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review", "SHA1",
+    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
     const rec = store.get("git.linecorp.com/O/R#65")!;
     expect(rec.state).toBe("NEEDS_REVIEW");
@@ -60,10 +60,28 @@ describe("Orchestrator", () => {
     expect(rec.draftVersion).toBe(1);
   });
 
+  it("regeneration records the current live head, not a frozen SHA (breaks the STALE→GENERATING loop)", async () => {
+    const { orch, store } = mkOrch();
+    const gh = (orch as any).d.gh;
+    // A record left STALE by a post that saw the head advance.
+    const key = seed(store, 40, "STALE", { headSha: "SHA1", draft, draftVersion: 1 });
+    // The author has pushed: the live head is now SHA2.
+    gh.headSha = async () => "SHA2";
+
+    // The STALE-recovery path (enqueueGen) passes the *stale* rec.headSha. Whatever
+    // is passed, the regenerated record must record the live head it reviewed against.
+    await orch.runGeneration(key, "re-review",
+      { url: "http://x/O/R/pull/40", owner: "O", repo: "R", number: 40, title: "t" });
+
+    const rec = store.get(key)!;
+    expect(rec.state).toBe("NEEDS_REVIEW");
+    expect(rec.headSha).toBe("SHA2"); // was frozen at SHA1 → endless STALE loop
+  });
+
   it("runGeneration records ERROR when generate throws", async () => {
     const { orch, store } = mkOrch();
     (orch as any).generate = async () => { throw new Error("boom"); };
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review", "SHA1",
+    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
     expect(store.get("git.linecorp.com/O/R#65")!.state).toBe("ERROR");
   });
@@ -71,7 +89,7 @@ describe("Orchestrator", () => {
   it("poll/generation cycle never posts", async () => {
     const { orch, store } = mkOrch();
     const gh = (orch as any).d.gh;
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review", "SHA1",
+    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
     const rec = store.get("git.linecorp.com/O/R#65")!;
     expect(rec.state).toBe("NEEDS_REVIEW");
@@ -98,7 +116,7 @@ describe("Orchestrator", () => {
       effort: () => "max",
       operatingMode: () => "supervised",
     });
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review", "SHA1",
+    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
     expect(capturedInput.language).toBe("en");
     expect(capturedInput.effort).toBe("max");
@@ -145,7 +163,7 @@ describe("Orchestrator — automated mode", () => {
     (orch as any).enqueuePost = postSpy;
     const notifier = (orch as any).d.notifier;
 
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review", "SHA1",
+    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
 
     const rec = store.get("git.linecorp.com/O/R#65")!;
@@ -161,7 +179,7 @@ describe("Orchestrator — automated mode", () => {
     (orch as any).enqueuePost = postSpy;
     const notifier = (orch as any).d.notifier;
 
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review", "SHA1",
+    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
 
     expect(store.get("git.linecorp.com/O/R#65")!.state).toBe("NEEDS_REVIEW");
