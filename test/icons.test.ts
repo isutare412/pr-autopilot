@@ -47,13 +47,13 @@ describe("icon assets", () => {
     expect(hasAlpha(b.colorType)).toBe(true);
   });
 
-  it("automated tray templates are 18x18 and 36x36 with alpha", () => {
+  it("automated tray templates are 18x18 and 36x36 RGBA", () => {
     const a = png("build/trayTemplate-automated.png");
     expect([a.width, a.height]).toEqual([18, 18]);
-    expect(hasAlpha(a.colorType)).toBe(true);
+    expect(a.colorType).toBe(6); // RGBA — the blue wheel is true color, not a template
     const b = png("build/trayTemplate-automated@2x.png");
     expect([b.width, b.height]).toEqual([36, 36]);
-    expect(hasAlpha(b.colorType)).toBe(true);
+    expect(b.colorType).toBe(6);
   });
 
   it("bundles the mode tray templates as extraResources", () => {
