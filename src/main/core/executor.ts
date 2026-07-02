@@ -42,9 +42,9 @@ export function buildReviewPayload(
   const unanchorableText = unanchorable.length === 0 ? "" :
     unanchorable.map((f) => `${f.path}:${f.line} — ${f.editedBody ?? f.body}`).join("\n\n");
 
-  // An APPROVE always leads with the LGTM line; a nit that can't anchor inline is
-  // appended below it so it still ships. A COMMENT carries only the finding text
-  // (unanchorable folded into the body, else empty).
+  // An APPROVE always leads with the LGTM line; an unanchorable included finding
+  // is appended below it so it still ships. A COMMENT carries only the finding
+  // text (unanchorable folded into the body, else empty).
   const body = verdict === "approve"
     ? [APPROVE_BODY, unanchorableText].filter(Boolean).join("\n\n")
     : unanchorableText;

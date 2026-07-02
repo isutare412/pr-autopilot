@@ -20,7 +20,7 @@ interface ActionsBarProps {
  *  (and/or resolve replies) — the nits ship on the approval; "comment" (and
  *  re-queue yourself) when any Critical/Major/Minor finding or unresolved
  *  follow-up/needs-call thread remains. Mirrors executor.defaultVerdict. */
-function defaultVerdict(draft: UiDraft): Verdict {
+export function defaultVerdict(draft: UiDraft): Verdict {
   const hasNonNit = draft.findings.some((f) => f.included && f.priority !== "Nit");
   const hasOpenThreads = draft.verify.some((v) => v.included && v.verdict !== "resolve");
   return hasNonNit || hasOpenThreads ? "comment" : "approve";

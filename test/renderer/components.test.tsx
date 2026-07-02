@@ -2,7 +2,8 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { QueueRow } from "../../src/renderer/src/components/QueueRow";
 import { FindingCard } from "../../src/renderer/src/components/FindingCard";
-import { ActionsBar } from "../../src/renderer/src/components/ActionsBar";
+import { ActionsBar, defaultVerdict as uiDefaultVerdict } from "../../src/renderer/src/components/ActionsBar";
+import { defaultVerdict as coreDefaultVerdict } from "../../src/main/core/executor";
 import { Detail } from "../../src/renderer/src/components/Detail";
 import { DeleteButton } from "../../src/renderer/src/components/DeleteButton";
 import { QueueFilter } from "../../src/renderer/src/components/QueueFilter";
@@ -160,9 +161,8 @@ describe("ActionsBar", () => {
   it("defaults a nit-only draft to approve", () => {
     const onApprove = vi.fn();
     const nitDraft = {
-      overallEn: "", counts: { critical: 0, major: 0, minor: 0, nit: 1 },
+      ...draft, counts: { critical: 0, major: 0, minor: 0, nit: 1 },
       findings: [{ ref: "#1", path: "a.ts", line: 5, priority: "Nit", body: "b", editedBody: null, included: true, anchorable: true }],
-      verify: [],
     };
     render(<ActionsBar {...props} draft={nitDraft} onApprove={onApprove} state="NEEDS_REVIEW" />);
     fireEvent.click(screen.getByRole("button", { name: /post/i }));
@@ -172,9 +172,8 @@ describe("ActionsBar", () => {
   it("defaults a draft with a non-Nit finding to comment", () => {
     const onApprove = vi.fn();
     const majorDraft = {
-      overallEn: "", counts: { critical: 0, major: 1, minor: 0, nit: 0 },
+      ...draft, counts: { critical: 0, major: 1, minor: 0, nit: 0 },
       findings: [{ ref: "#1", path: "a.ts", line: 5, priority: "Major", body: "b", editedBody: null, included: true, anchorable: true }],
-      verify: [],
     };
     render(<ActionsBar {...props} draft={majorDraft} onApprove={onApprove} state="NEEDS_REVIEW" />);
     fireEvent.click(screen.getByRole("button", { name: /post/i }));
@@ -293,4 +292,28 @@ describe("Detail error-branch actions", () => {
     );
     expect(screen.getByRole("button", { name: /^restore$/i })).toBeInTheDocument();
   });
+});
+
+describe("defaultVerdict parity: executor vs ActionsBar", () => {
+  const draft = (findings: any[], verify: any[] = []) => ({
+    overallEn: "", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings, verify,
+  });
+  const f = (priority: string, included = true, anchorable = true) =>
+    ({ ref: "#1", path: "a.ts", line: 1, side: "RIGHT", startLine: null, startSide: null,
+       anchorable, priority, body: "b", suggestion: null, included, editedBody: null, id: "x" });
+  const v = (verdict: string, included = true) =>
+    ({ ref: "V1", verdict, included, id: "v", threadNodeId: "N", replyTargetDatabaseId: 1,
+       path: "a.ts", line: 1, rationaleEn: "r", replyBody: "", editedBody: null });
+  const check = (d: any, expected: "approve" | "comment") => {
+    expect(coreDefaultVerdict(d as any)).toBe(expected);
+    expect(uiDefaultVerdict(d as any)).toBe(expected);
+    expect(coreDefaultVerdict(d as any)).toBe(uiDefaultVerdict(d as any));
+  };
+
+  it("empty → approve", () => check(draft([]), "approve"));
+  it("nit-only → approve", () => check(draft([f("Nit")]), "approve"));
+  it("a non-Nit finding → comment", () => check(draft([f("Major")]), "comment"));
+  it("nit + open follow-up → comment", () => check(draft([f("Nit")], [v("follow-up")]), "comment"));
+  it("nit + resolve-only reply → approve", () => check(draft([f("Nit")], [v("resolve")]), "approve"));
+  it("excluded non-Nit finding does not force comment", () => check(draft([f("Critical", false), f("Nit")]), "approve"));
 });

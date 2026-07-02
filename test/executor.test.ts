@@ -142,6 +142,10 @@ describe("defaultVerdict", () => {
     const d = baseRec().draft!; d.findings = [nit()]; d.verify = [verifyItem("resolve")];
     expect(defaultVerdict(d)).toBe("approve");
   });
+  it("an excluded non-Nit finding does not force comment", () => {
+    const d = baseRec().draft!; d.findings = [{ ...critical(), included: false }, nit()]; d.verify = [];
+    expect(defaultVerdict(d)).toBe("approve");
+  });
 });
 
 describe("execute", () => {
