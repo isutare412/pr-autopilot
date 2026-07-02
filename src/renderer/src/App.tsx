@@ -52,13 +52,16 @@ export function App() {
     setRecord(r as UiRecord);
   }
 
+  // Drop the detail-pane selection entirely (state + ref, kept in sync).
+  function clearSelection() {
+    setRecord(null);
+    setSelectedKey(null);
+    selectedKeyRef.current = null;
+  }
+
   async function dismiss(key: string) {
     await api.dismiss(key);
-    if (key === selectedKeyRef.current) {
-      setRecord(null);
-      setSelectedKey(null);
-      selectedKeyRef.current = null;
-    }
+    if (key === selectedKeyRef.current) clearSelection();
     await loadList();
   }
 
@@ -70,11 +73,7 @@ export function App() {
 
   async function del(key: string) {
     await api.delete(key);
-    if (key === selectedKeyRef.current) {
-      setRecord(null);
-      setSelectedKey(null);
-      selectedKeyRef.current = null;
-    }
+    if (key === selectedKeyRef.current) clearSelection();
     await loadList();
   }
 
@@ -136,14 +135,12 @@ export function App() {
   const visibleRows = rows.filter((r) => isQueueVisible(r, { showDone, showDismissed, showClosed }));
 
   // Never keep a PR focused in the detail pane once it has left the queue's
-  // visible set — e.g. its row was hidden by a filter toggle (from here or the
-  // tray) or by a state change. Mirrors the selection reset in dismiss()/del().
+  // visible set — whether its row was hidden by a filter toggle (from here or
+  // the tray) or by a state change. Reuses the derived visibleRows so
+  // isQueueVisible stays the single source of truth.
   useEffect(() => {
-    if (selectedKey && !visibleRows.some((r) => r.key === selectedKey)) {
-      setRecord(null);
-      setSelectedKey(null);
-      selectedKeyRef.current = null;
-    }
+    if (selectedKey && !visibleRows.some((r) => r.key === selectedKey)) clearSelection();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKey, visibleRows]);
 
   // Title counts only reviews that actually await me: visible NEEDS_REVIEW.
