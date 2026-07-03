@@ -687,11 +687,27 @@ body {
 
 /* ---- Live GENERATING feed — the one animated, memorable moment ---- */
 
+.detail-generating {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.detail-generating .pr-head {
+  flex: none;
+}
+
 .gen {
   padding: 4px 2px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .gen-head {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -739,6 +755,9 @@ body {
 .gen-log {
   font: 12px/1.75 var(--mono);
   padding: 2px 12px 16px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .act-line {
@@ -1175,12 +1194,14 @@ body {
 /* ---- Scrollbars ---- */
 
 #queue::-webkit-scrollbar,
-#detail::-webkit-scrollbar {
+#detail::-webkit-scrollbar,
+.gen-log::-webkit-scrollbar {
   width: 10px;
 }
 
 #queue::-webkit-scrollbar-thumb,
-#detail::-webkit-scrollbar-thumb {
+#detail::-webkit-scrollbar-thumb,
+.gen-log::-webkit-scrollbar-thumb {
   background: #222a34;
   border-radius: 6px;
 }

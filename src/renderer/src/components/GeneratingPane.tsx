@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { UiRecord } from "../types";
 
 interface GeneratingPaneProps {
@@ -11,7 +11,7 @@ function fmtElapsed(ms: number): string {
 }
 
 function ActivityLog({ activity }: { activity?: string[] }) {
-  const items = (activity ?? []).slice(-9);
+  const items = activity ?? [];
   if (!items.length) {
     return <div className="act-line act-wait">▸ warming up — fetching the PR…</div>;
   }
@@ -40,6 +40,23 @@ export function GeneratingPane({ record }: GeneratingPaneProps) {
     return () => clearInterval(timer);
   }, [startedMs]);
 
+  // Log-tail auto-follow: keep the newest line in view, but pause following the
+  // moment the user scrolls up to read history; resume when they return to the bottom.
+  const logRef = useRef<HTMLDivElement>(null);
+  const stuckToBottom = useRef(true);
+  const count = record.genActivity?.length ?? 0;
+
+  const onScroll = () => {
+    const el = logRef.current;
+    if (!el) return;
+    stuckToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  };
+
+  useEffect(() => {
+    const el = logRef.current;
+    if (el && stuckToBottom.current) el.scrollTop = el.scrollHeight;
+  }, [count]);
+
   return (
     <div className="gen">
       <div className="gen-head">
@@ -49,7 +66,7 @@ export function GeneratingPane({ record }: GeneratingPaneProps) {
           elapsed <span id="gen-elapsed">{elapsed}</span>
         </span>
       </div>
-      <div id="gen-log" className="gen-log">
+      <div id="gen-log" className="gen-log" ref={logRef} onScroll={onScroll}>
         <ActivityLog activity={record.genActivity} />
       </div>
     </div>

@@ -66,10 +66,10 @@ export function Detail({ record, onToggle, onEdit, onApprove, onDismiss, onResto
 
   if (record.state === "GENERATING") {
     return (
-      <>
+      <div className="detail-generating">
         <PrHead number={record.number} title={record.title} url={record.url} />
         <GeneratingPane record={record} />
-      </>
+      </div>
     );
   }
 

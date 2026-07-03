@@ -7,6 +7,7 @@ import { defaultVerdict as coreDefaultVerdict } from "../../src/main/core/execut
 import { Detail } from "../../src/renderer/src/components/Detail";
 import { DeleteButton } from "../../src/renderer/src/components/DeleteButton";
 import { QueueFilter } from "../../src/renderer/src/components/QueueFilter";
+import { GeneratingPane } from "../../src/renderer/src/components/GeneratingPane";
 
 afterEach(cleanup);
 
@@ -291,6 +292,34 @@ describe("Detail error-branch actions", () => {
       <Detail record={errRecord("ERROR", true)} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
     );
     expect(screen.getByRole("button", { name: /^restore$/i })).toBeInTheDocument();
+  });
+});
+
+describe("GeneratingPane", () => {
+  const rec = (over = {}) =>
+    ({
+      key: "k", number: 7, repo: "svc", title: "t", state: "GENERATING",
+      mode: "first-review", counts: null, updatedAt: "", ...over,
+    }) as unknown as import("../../src/renderer/src/types").UiRecord;
+
+  it("renders every activity line, not just the last few", () => {
+    const activity = Array.from({ length: 20 }, (_, i) => `step ${i}`);
+    render(<GeneratingPane record={rec({ genActivity: activity })} />);
+    expect(screen.getByText(/step 0$/)).toBeInTheDocument();
+    expect(screen.getByText(/step 19$/)).toBeInTheDocument();
+    expect(document.querySelectorAll(".act-line")).toHaveLength(20);
+  });
+
+  it("marks only the last line active", () => {
+    render(<GeneratingPane record={rec({ genActivity: ["a", "b", "c"] })} />);
+    const active = document.querySelectorAll(".act-line.act-active");
+    expect(active).toHaveLength(1);
+    expect(active[0].textContent).toContain("c");
+  });
+
+  it("shows the warming-up placeholder when the feed is empty", () => {
+    render(<GeneratingPane record={rec({ genActivity: [] })} />);
+    expect(screen.getByText(/warming up/i)).toBeInTheDocument();
   });
 });
 
