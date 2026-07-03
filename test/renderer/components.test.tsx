@@ -299,7 +299,7 @@ describe("GeneratingPane", () => {
   const rec = (over = {}) =>
     ({
       key: "k", number: 7, repo: "svc", title: "t", state: "GENERATING",
-      mode: "first-review", counts: null, updatedAt: "", ...over,
+      mode: "first-review", updatedAt: "", ...over,
     }) as unknown as import("../../src/renderer/src/types").UiRecord;
 
   it("renders every activity line, not just the last few", () => {

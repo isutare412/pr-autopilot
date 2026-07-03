@@ -44,7 +44,6 @@ export function GeneratingPane({ record }: GeneratingPaneProps) {
   // moment the user scrolls up to read history; resume when they return to the bottom.
   const logRef = useRef<HTMLDivElement>(null);
   const stuckToBottom = useRef(true);
-  const count = record.genActivity?.length ?? 0;
 
   const onScroll = () => {
     const el = logRef.current;
@@ -55,7 +54,7 @@ export function GeneratingPane({ record }: GeneratingPaneProps) {
   useEffect(() => {
     const el = logRef.current;
     if (el && stuckToBottom.current) el.scrollTop = el.scrollHeight;
-  }, [count]);
+  }, [record.genActivity]);
 
   return (
     <div className="gen">
