@@ -121,6 +121,35 @@ describe("Orchestrator", () => {
     expect(capturedInput.language).toBe("en");
     expect(capturedInput.effort).toBe("max");
   });
+
+  it("persists the full activity feed, not just the last 10, while generating", async () => {
+    const { orch, store } = mkOrch();
+    let captured: string[] | undefined;
+    orch.generate = vi.fn(async (_input, onActivity) => {
+      onActivity?.(Array.from({ length: 20 }, (_, i) => `step ${i}`));
+      captured = store.get("git.linecorp.com/O/R#65")?.genActivity;
+      return draft;
+    });
+    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
+      { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
+    expect(captured).toHaveLength(20);
+    expect(captured?.[0]).toBe("step 0");
+    expect(captured?.[19]).toBe("step 19");
+  });
+
+  it("caps the persisted activity feed at 500 lines", async () => {
+    const { orch, store } = mkOrch();
+    let captured: string[] | undefined;
+    orch.generate = vi.fn(async (_input, onActivity) => {
+      onActivity?.(Array.from({ length: 600 }, (_, i) => `step ${i}`));
+      captured = store.get("git.linecorp.com/O/R#65")?.genActivity;
+      return draft;
+    });
+    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
+      { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
+    expect(captured).toHaveLength(500);
+    expect(captured?.[0]).toBe("step 100"); // last 500 of 600 begins at index 100
+  });
 });
 
 describe("recoverInFlight", () => {

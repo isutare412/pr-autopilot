@@ -89,7 +89,7 @@ export class Orchestrator {
           if (t - lastWrite < 700) return;
           lastWrite = t;
           const cur = this.store.get(key);
-          if (cur && cur.state === "GENERATING") this.store.put({ ...cur, genActivity: steps.slice(-10) });
+          if (cur && cur.state === "GENERATING") this.store.put({ ...cur, genActivity: steps.slice(-500) });
         };
         const draft = await this.generate({ url: rec.url, priorDraft, feedback, language: this.d.language(), effort: this.d.effort() }, onActivity);
         const updated: PrRecord = {
