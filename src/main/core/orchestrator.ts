@@ -95,6 +95,12 @@ export class Orchestrator {
         const updated: PrRecord = {
           ...rec, draft, state: "NEEDS_REVIEW", draftVersion: rec.draftVersion + 1,
           headSha, generatedAt: this.d.nowIso(), updatedAt: this.d.nowIso(), error: null,
+          // A fresh draft begins a new post cycle: clear the previous cycle's post
+          // state. postProgress is the executor's per-post idempotency ledger — if a
+          // prior review's `reviewPosted`/`reviewerRequested` leaked through, execute()
+          // would skip posting this draft's findings as "already done". postResult
+          // (stale review URL) and postVerdict (stale disposition) go with it.
+          postProgress: null, postResult: null, postVerdict: undefined,
         };
         this.store.put(updated);
         if (this.d.operatingMode() === "automated") {

@@ -78,6 +78,29 @@ describe("Orchestrator", () => {
     expect(rec.headSha).toBe("SHA2"); // was frozen at SHA1 → endless STALE loop
   });
 
+  it("regeneration clears the previous post cycle's ledger (stale postProgress must not skip the new post)", async () => {
+    const { orch, store } = mkOrch();
+    // A record whose *first* review already completed: postProgress marks the
+    // review as posted and the reviewer re-requested, postResult holds that
+    // review's URL, and a disposition was chosen. If any of this leaks into the
+    // re-review draft, execute() would skip posting the new finding as "already done".
+    const key = seed(store, 41, "POSTED_AWAITING_AUTHOR", {
+      draft, draftVersion: 1, mode: "re-review",
+      postProgress: { repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: true },
+      postResult: { reviewUrl: "http://x/r/first", postedAt: "t", resolvedThreadIds: [] },
+      postVerdict: "comment",
+    });
+
+    await orch.runGeneration(key, "re-review",
+      { url: "http://x/O/R/pull/41", owner: "O", repo: "R", number: 41, title: "t" });
+
+    const rec = store.get(key)!;
+    expect(rec.state).toBe("NEEDS_REVIEW");
+    expect(rec.postProgress).toBeNull();
+    expect(rec.postResult).toBeNull();
+    expect(rec.postVerdict).toBeUndefined();
+  });
+
   it("runGeneration records ERROR when generate throws", async () => {
     const { orch, store } = mkOrch();
     (orch as any).generate = async () => { throw new Error("boom"); };
