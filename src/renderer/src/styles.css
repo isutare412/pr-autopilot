@@ -1086,42 +1086,6 @@ body {
   filter: none;
 }
 
-.del-btn {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 9px 13px;
-  cursor: pointer;
-  font: inherit;
-}
-
-.del-btn:hover {
-  color: var(--crit);
-  border-color: var(--crit);
-}
-
-.error-box .del-btn {
-  margin-top: 14px;
-}
-
-.del-confirm {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.del-confirm__q {
-  font: 600 12px/1 var(--mono);
-  color: var(--crit);
-  letter-spacing: 0.03em;
-}
-
-.del-btn--danger {
-  color: var(--crit);
-  border-color: var(--crit);
-}
-
 /* ---- Row actions menu (Hide / Discard) ---- */
 
 .row-menu {

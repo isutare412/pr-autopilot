@@ -5,7 +5,6 @@ import { FindingCard } from "../../src/renderer/src/components/FindingCard";
 import { ActionsBar, defaultVerdict as uiDefaultVerdict } from "../../src/renderer/src/components/ActionsBar";
 import { defaultVerdict as coreDefaultVerdict } from "../../src/main/core/executor";
 import { Detail } from "../../src/renderer/src/components/Detail";
-import { DeleteButton } from "../../src/renderer/src/components/DeleteButton";
 import { QueueFilter } from "../../src/renderer/src/components/QueueFilter";
 import { GeneratingPane } from "../../src/renderer/src/components/GeneratingPane";
 import { RowActionsMenu } from "../../src/renderer/src/components/RowActionsMenu";
@@ -246,26 +245,6 @@ describe("ActionsBar", () => {
     render(<ActionsBar {...props} draft={majorDraft} onApprove={onApprove} state="NEEDS_REVIEW" />);
     fireEvent.click(screen.getByRole("button", { name: /post/i }));
     expect(onApprove).toHaveBeenCalledWith("comment");
-  });
-});
-
-describe("DeleteButton", () => {
-  it("requires a confirm step before firing onDelete", () => {
-    const onDelete = vi.fn();
-    render(<DeleteButton onDelete={onDelete} />);
-    fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
-    expect(onDelete).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
-    expect(onDelete).toHaveBeenCalledTimes(1);
-  });
-
-  it("cancel aborts without firing onDelete", () => {
-    const onDelete = vi.fn();
-    render(<DeleteButton onDelete={onDelete} />);
-    fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
-    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
-    expect(onDelete).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: /^delete$/i })).toBeInTheDocument();
   });
 });
 
