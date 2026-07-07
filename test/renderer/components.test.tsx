@@ -137,7 +137,7 @@ describe("RowActionsMenu", () => {
 });
 
 describe("QueueFilter", () => {
-  const props = { showDone: false, showDismissed: false, showClosed: false, doneCount: 2, dismissedCount: 1, closedCount: 3, onChange: vi.fn() };
+  const props = { showDone: false, showDismissed: false, showClosed: false, doneCount: 2, dismissedCount: 1, closedCount: 3, onChange: vi.fn(), sort: { key: "activity", dir: "desc" } as const, onSortChange: vi.fn() };
 
   it("opens the menu and toggles show done", () => {
     const onChange = vi.fn();
@@ -185,6 +185,30 @@ describe("QueueFilter", () => {
     expect(screen.getByRole("checkbox", { name: /show all/i })).toBeChecked();
     rerender(<QueueFilter {...props} showDone showDismissed={false} showClosed />);
     expect(screen.getByRole("checkbox", { name: /show all/i })).not.toBeChecked();
+  });
+
+  it("toggles direction when the active sort key is clicked again", () => {
+    const onSortChange = vi.fn();
+    render(<QueueFilter {...props} sort={{ key: "activity", dir: "desc" }} onSortChange={onSortChange} />);
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /recent activity/i }));
+    expect(onSortChange).toHaveBeenCalledWith({ key: "activity", dir: "asc" });
+  });
+
+  it("switches to the other key at descending", () => {
+    const onSortChange = vi.fn();
+    render(<QueueFilter {...props} sort={{ key: "activity", dir: "asc" }} onSortChange={onSortChange} />);
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /repo & number/i }));
+    expect(onSortChange).toHaveBeenCalledWith({ key: "repo", dir: "desc" });
+  });
+
+  it("badges the direction and marks the active key", () => {
+    const { container } = render(<QueueFilter {...props} sort={{ key: "repo", dir: "asc" }} />);
+    expect(container.querySelector(".filter-badge")?.textContent).toBe("↑");
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    expect(screen.getByRole("menuitemradio", { name: /repo & number/i })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemradio", { name: /recent activity/i })).toHaveAttribute("aria-checked", "false");
   });
 });
 

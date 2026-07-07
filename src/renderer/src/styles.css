@@ -96,13 +96,22 @@ body {
   cursor: default;
 }
 .filter-btn {
-  font: 600 11px/1 var(--ui);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  padding: 0;
   color: var(--muted);
   background: transparent;
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 6px 12px;
   cursor: pointer;
+}
+.filter-btn svg {
+  width: 14px;
+  height: 14px;
 }
 .filter-btn:hover {
   color: var(--fg);
@@ -112,6 +121,20 @@ body {
   color: var(--accent);
   border-color: var(--accent-dim);
   background: rgba(70, 198, 192, 0.1);
+}
+.filter-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 2px;
+  display: grid;
+  place-items: center;
+  font: 700 9px/1 var(--ui);
+  color: #0b0f14;
+  background: var(--accent);
+  border-radius: 999px;
 }
 
 .interval-select {
@@ -534,6 +557,41 @@ body {
   height: 1px;
   margin: 2px 4px;
   background: var(--line);
+}
+.filter-section-label {
+  font: 600 9px/1 var(--ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 6px 8px 3px;
+}
+.sort-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 5px;
+  font: 12px/1.3 var(--ui);
+  color: var(--fg);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.sort-opt:hover {
+  background: #1b212a;
+}
+.sort-opt[aria-checked="true"] {
+  color: var(--accent);
+}
+.sort-opt .sort-arrow {
+  width: 12px;
+  text-align: center;
+  color: var(--muted);
+}
+.sort-opt[aria-checked="true"] .sort-arrow {
+  color: var(--accent);
 }
 
 @keyframes menu-in {
