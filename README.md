@@ -188,3 +188,9 @@ make install  # build + package + copy to /Applications
 ```
 
 Run `make help` for the full list of targets.
+
+---
+
+## License
+
+[MIT](LICENSE) © Redshore

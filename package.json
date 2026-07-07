@@ -2,6 +2,7 @@
   "name": "pr-autopilot",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "main": "out/main/index.js",
   "packageManager": "pnpm@11.9.0",
   "engines": { "node": ">=20", "pnpm": ">=11" },
