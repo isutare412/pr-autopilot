@@ -4,18 +4,16 @@ import type { MenuItemConstructorOptions } from "electron";
 import type { PrRecord, OperatingMode } from "./core/schema";
 import { getPluginDir } from "./paths";
 import { isQueueVisible, QueueFilters } from "./core/visibility";
+import { sortRows } from "./core/queueSort";
+import type { QueueSort } from "./core/schema";
 
 export interface TrayHandlers {
   openPr(key: string): void; openMain(): void; pollNow(): void;
   openPreferences(): void; toggleLogin(): void; quit(): void; openAtLogin: boolean;
   getMode(): OperatingMode; setMode(m: OperatingMode): void;
   getFilters(): QueueFilters;
+  getSort(): QueueSort;
 }
-
-const RANK: Record<string, number> = {
-  NEEDS_REVIEW: 0, GENERATING: 1, POSTING: 2, POSTED_AWAITING_AUTHOR: 3,
-  STALE: 4, ERROR: 5, DISCOVERED: 6, DONE: 7, CLOSED: 8,
-};
 
 const MODE_LABEL: Record<OperatingMode, string> = {
   disabled: "Disabled", supervised: "Supervised", automated: "Automated",
@@ -51,8 +49,7 @@ export function buildTrayMenu(records: PrRecord[], h: TrayHandlers): MenuItemCon
     { label: "Automated", type: "radio", checked: mode === "automated", click: () => h.setMode("automated") },
     { type: "separator" },
   ];
-  const visible = records.filter((r) => isQueueVisible(r, h.getFilters()));
-  visible.sort((a, b) => (RANK[a.state] ?? 9) - (RANK[b.state] ?? 9) || a.repo.localeCompare(b.repo));
+  const visible = sortRows(records.filter((r) => isQueueVisible(r, h.getFilters())), h.getSort());
   const prItems: MenuItemConstructorOptions[] = visible.length
     ? visible.map((r) => ({ label: `#${r.number} ${r.repo} — ${r.state}`, click: () => h.openPr(r.key) }))
     : [{ label: "No PRs in queue", enabled: false }];

@@ -3,7 +3,7 @@ vi.mock("electron", () => ({ Tray: class {}, Menu: {}, nativeImage: {} }));
 
 import { describe, it, expect } from "vitest";
 import { buildTrayMenu, trayIconFile, hasNeedsReview } from "../src/main/tray";
-import type { PrRecord, OperatingMode } from "../src/main/core/schema";
+import type { PrRecord, OperatingMode, QueueSort } from "../src/main/core/schema";
 
 const rec = (over: Partial<PrRecord>): PrRecord => ({
   key: "h/o/r#1", host: "h", owner: "o", repo: "r", number: 1, url: "u", title: "T",
@@ -17,6 +17,7 @@ const handlers = {
   toggleLogin: vi.fn(), quit: vi.fn(), openAtLogin: true,
   getMode: () => "supervised" as OperatingMode, setMode: vi.fn(),
   getFilters: () => ({ showDone: false, showDismissed: false, showClosed: false }),
+  getSort: () => ({ key: "activity", dir: "desc" }) as QueueSort,
 };
 
 describe("buildTrayMenu", () => {
@@ -66,6 +67,22 @@ describe("buildTrayMenu", () => {
     const item = menu.find((m) => m.label === "#3 r3 — NEEDS_REVIEW")!;
     (item.click as () => void)();
     expect(handlers.openPr).toHaveBeenCalledWith("k-nr");
+  });
+
+  it("orders PRs by the selected sort", () => {
+    const records = [
+      rec({ key: "k1", number: 1, repo: "zebra", state: "NEEDS_REVIEW", updatedAt: "2026-01-01T00:00:00Z" }),
+      rec({ key: "k2", number: 2, repo: "alpha", state: "NEEDS_REVIEW", updatedAt: "2026-03-01T00:00:00Z" }),
+    ];
+    const prLabels = (h: typeof handlers) =>
+      buildTrayMenu(records, h).map((m) => m.label).filter((l) => l?.startsWith("#"));
+
+    expect(prLabels({ ...handlers, getSort: () => ({ key: "activity", dir: "desc" }) as QueueSort }))
+      .toEqual(["#2 alpha — NEEDS_REVIEW", "#1 zebra — NEEDS_REVIEW"]);
+    expect(prLabels({ ...handlers, getSort: () => ({ key: "repo", dir: "asc" }) as QueueSort }))
+      .toEqual(["#2 alpha — NEEDS_REVIEW", "#1 zebra — NEEDS_REVIEW"]);
+    expect(prLabels({ ...handlers, getSort: () => ({ key: "repo", dir: "desc" }) as QueueSort }))
+      .toEqual(["#1 zebra — NEEDS_REVIEW", "#2 alpha — NEEDS_REVIEW"]);
   });
 });
 
