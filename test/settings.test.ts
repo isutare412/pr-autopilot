@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadSettings, saveSettings, DEFAULT_SETTINGS } from "../src/main/settings";
+import { loadSettings, saveSettings, DEFAULT_SETTINGS, SettingsStore } from "../src/main/settings";
 
 describe("settings", () => {
   it("returns defaults when no file exists", () => {
@@ -89,5 +89,60 @@ describe("settings", () => {
     const dir = mkdtempSync(join(tmpdir(), "pa-"));
     saveSettings(dir, { ...DEFAULT_SETTINGS, queueSort: { key: "repo", dir: "asc" } });
     expect(loadSettings(dir).queueSort).toEqual({ key: "repo", dir: "asc" });
+  });
+});
+
+describe("SettingsStore", () => {
+  const freshDir = () => mkdtempSync(join(tmpdir(), "pa-"));
+
+  it("get returns the initial settings", () => {
+    const s = new SettingsStore(freshDir(), DEFAULT_SETTINGS);
+    expect(s.get()).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it("update merges a patch, persists to disk, and returns the new snapshot", () => {
+    const dir = freshDir();
+    const s = new SettingsStore(dir, DEFAULT_SETTINGS);
+    const next = s.update({ genConcurrency: 5 });
+    expect(next.genConcurrency).toBe(5);
+    expect(s.get().genConcurrency).toBe(5);
+    expect(loadSettings(dir).genConcurrency).toBe(5);                        // persisted
+    expect(s.get().retentionDays).toBe(DEFAULT_SETTINGS.retentionDays);     // other fields untouched
+  });
+
+  it("notifies subscribers with (next, prev) on update", () => {
+    const s = new SettingsStore(freshDir(), DEFAULT_SETTINGS);
+    const seen: Array<[number, number]> = [];
+    s.subscribe((next, prev) => seen.push([prev.genConcurrency, next.genConcurrency]));
+    s.update({ genConcurrency: 4 });
+    expect(seen).toEqual([[DEFAULT_SETTINGS.genConcurrency, 4]]);
+  });
+
+  it("unsubscribe stops further notifications", () => {
+    const s = new SettingsStore(freshDir(), DEFAULT_SETTINGS);
+    const fn = vi.fn();
+    const off = s.subscribe(fn);
+    s.update({ genConcurrency: 3 });
+    off();
+    s.update({ genConcurrency: 4 });
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("isolates a throwing subscriber so others still run and update does not throw", () => {
+    const s = new SettingsStore(freshDir(), DEFAULT_SETTINGS);
+    const good = vi.fn();
+    s.subscribe(() => { throw new Error("bad subscriber"); });
+    s.subscribe(good);
+    expect(() => s.update({ genConcurrency: 3 })).not.toThrow();
+    expect(good).toHaveBeenCalledOnce();
+  });
+
+  it("throws on an invalid patch and leaves memory and disk unchanged", () => {
+    const dir = freshDir();
+    const s = new SettingsStore(dir, DEFAULT_SETTINGS);
+    s.update({ genConcurrency: 2 });                          // known-good baseline on disk
+    expect(() => s.update({ genConcurrency: -1 })).toThrow(); // positive-int schema rejects -1
+    expect(s.get().genConcurrency).toBe(2);                   // memory unchanged
+    expect(loadSettings(dir).genConcurrency).toBe(2);         // disk unchanged
   });
 });
