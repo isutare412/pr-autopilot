@@ -4,7 +4,7 @@ import { Store } from "./core/store";
 import { Gh, realGhRunner } from "./core/gh";
 import { realClaudeSpawner, generate as genFn } from "./core/generator";
 import { Orchestrator } from "./core/orchestrator";
-import { loadSettings, saveSettings, Settings } from "./settings";
+import { Settings, SettingsStore } from "./settings";
 import { OperatingMode, QueueSort } from "./core/schema";
 import { electronNotifier } from "./notify-electron";
 import { resolvePath, expandTilde, getPluginDir, getDataDir } from "./paths";
@@ -20,7 +20,7 @@ app.on("second-instance", () => showMain());
 app.whenReady().then(async () => {
   try {
     const dataDir = getDataDir();
-    let settings = loadSettings(dataDir);
+    const settingsStore = new SettingsStore(dataDir);
 
     // Set PATH before any gh spawn so packaged .app finds gh even with launchd's minimal PATH.
     // NB: the read-only gh shim must NOT go on the main-process PATH — that would route the
@@ -31,44 +31,50 @@ app.whenReady().then(async () => {
     process.env.PATH = resolvePath();
 
     const store = new Store(dataDir);
-    const gh = new Gh(realGhRunner(), settings.githubHost);
+    const gh = new Gh(realGhRunner(), settingsStore.get().githubHost);
     const login = await gh.login();
     const nowIso = () => new Date().toISOString();
 
-    const genDeps = {
+    const genBase = {
       spawner: realClaudeSpawner(),
-      claudeConfigDir: expandTilde(settings.claudeConfigDir),
       shimDir,
       guardSettings: join(getPluginDir(), "..", "build", "guard.settings.json"),
       pluginDir: getPluginDir(),
-      claudePath: expandTilde(settings.claudePath),
       dataDir,
     };
 
     const orch = new Orchestrator({
       store, gh,
-      generate: (input, onActivity) => genFn(genDeps, input, onActivity),
-      notifier: electronNotifier(() => settings.notify, (url) => { showMain(); openExternal(url); }),
-      nowIso, login, retentionDays: settings.retentionDays, concurrency: settings.genConcurrency,
-      host: settings.githubHost, repoAllow: settings.repoAllow, repoDeny: settings.repoDeny,
-      language: () => settings.commentLanguage,
-      effort: () => settings.effort,
-      operatingMode: () => settings.operatingMode,
+      generate: (input, onActivity) => genFn(
+        { ...genBase,
+          claudeConfigDir: expandTilde(settingsStore.get().claudeConfigDir),
+          claudePath: expandTilde(settingsStore.get().claudePath) },
+        input, onActivity),
+      notifier: electronNotifier(() => settingsStore.get().notify, (url) => { showMain(); openExternal(url); }),
+      nowIso, login,
+      retentionDays: () => settingsStore.get().retentionDays,
+      concurrency: settingsStore.get().genConcurrency,
+      host: settingsStore.get().githubHost,
+      repoAllow: () => settingsStore.get().repoAllow,
+      repoDeny: () => settingsStore.get().repoDeny,
+      language: () => settingsStore.get().commentLanguage,
+      effort: () => settingsStore.get().effort,
+      operatingMode: () => settingsStore.get().operatingMode,
     });
 
     const trayHandlers: TrayHandlers = {
       openPr: (key) => showMain(key), openMain: () => showMain(),
       pollNow: () => orch.runPoll().then(() => refreshTray(() => store.list(), trayHandlers)).catch((e) => console.error("[pollNow]", e)),
       openPreferences: () => showPreferences(),
-      toggleLogin: () => { settings = { ...settings, openAtLogin: !settings.openAtLogin }; saveSettings(dataDir, settings); applyLoginItem(settings.openAtLogin); refreshTray(() => store.list(), trayHandlers); trayHandlers.openAtLogin = settings.openAtLogin; },
-      quit: () => { app.quit(); }, openAtLogin: settings.openAtLogin,
-      getMode: () => settings.operatingMode,
+      toggleLogin: () => { settingsStore.update({ openAtLogin: !settingsStore.get().openAtLogin }); },
+      quit: () => { app.quit(); }, openAtLogin: settingsStore.get().openAtLogin,
+      getMode: () => settingsStore.get().operatingMode,
       setMode: (m) => { setOperatingMode(m).catch((e) => console.error("[setMode]", e)); },
-      getFilters: () => ({ showDone: settings.showDone, showDismissed: settings.showDismissed, showClosed: settings.showClosed }),
-      getSort: () => settings.queueSort,
+      getFilters: () => ({ showDone: settingsStore.get().showDone, showDismissed: settingsStore.get().showDismissed, showClosed: settingsStore.get().showClosed }),
+      getSort: () => settingsStore.get().queueSort,
     };
 
-    applyLoginItem(settings.openAtLogin);
+    applyLoginItem(settingsStore.get().openAtLogin);
     installAppMenu({
       onPreferences: () => showPreferences(),
       onPollNow: () => {
@@ -87,30 +93,49 @@ app.whenReady().then(async () => {
     let pollTimer: NodeJS.Timeout | null = null;
     const restartPolling = () => {
       if (pollTimer) clearInterval(pollTimer);
-      // Disabled stops the cron; in-flight queues drain on their own.
-      pollTimer = settings.operatingMode === "disabled" ? null : setInterval(poll, settings.pollIntervalSec * 1000);
+      pollTimer = settingsStore.get().operatingMode === "disabled" ? null : setInterval(poll, settingsStore.get().pollIntervalSec * 1000);
     };
-    if (settings.operatingMode !== "disabled") poll();
+    if (settingsStore.get().operatingMode !== "disabled") poll();
     restartPolling();
     setInterval(() => orch.pruneNow(), 24 * 60 * 60 * 1000);
 
+    // Live settings: settingsStore.update() fans out to these reactions.
+    settingsStore.subscribe((next, prev) => {
+      if (next.operatingMode !== prev.operatingMode || next.pollIntervalSec !== prev.pollIntervalSec) restartPolling();
+    });
+    settingsStore.subscribe((next, prev) => {
+      if (next.openAtLogin !== prev.openAtLogin) applyLoginItem(next.openAtLogin);
+    });
+    settingsStore.subscribe((next, prev) => {
+      if (next.genConcurrency !== prev.genConcurrency) orch.setConcurrency(next.genConcurrency);
+    });
+    settingsStore.subscribe((next, prev) => {
+      if (next.operatingMode !== prev.operatingMode || next.queueSort !== prev.queueSort ||
+          next.showDone !== prev.showDone || next.showDismissed !== prev.showDismissed ||
+          next.showClosed !== prev.showClosed || next.openAtLogin !== prev.openAtLogin) {
+        trayHandlers.openAtLogin = next.openAtLogin;
+        refreshTray(() => store.list(), trayHandlers);
+      }
+    });
+
     const broadcastMode = () => {
-      for (const w of BrowserWindow.getAllWindows()) w.webContents.send("mode-changed", settings.operatingMode);
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.send("mode-changed", settingsStore.get().operatingMode);
     };
 
     const broadcastPollInterval = () => {
       for (const w of BrowserWindow.getAllWindows())
-        w.webContents.send("poll-interval-changed", settings.pollIntervalSec);
+        w.webContents.send("poll-interval-changed", settingsStore.get().pollIntervalSec);
     };
 
     const broadcastQueueFilters = () => {
       for (const w of BrowserWindow.getAllWindows())
-        w.webContents.send("queue-filters-changed", { showDone: settings.showDone, showDismissed: settings.showDismissed, showClosed: settings.showClosed });
+        w.webContents.send("queue-filters-changed", { showDone: settingsStore.get().showDone, showDismissed: settingsStore.get().showDismissed, showClosed: settingsStore.get().showClosed });
     };
 
     async function setOperatingMode(mode: OperatingMode): Promise<void> {
-      if (mode === settings.operatingMode) { refreshTray(() => store.list(), trayHandlers); broadcastMode(); return; }
-      if (mode === "automated" && !settings.automatedConfirmed) {
+      if (mode === settingsStore.get().operatingMode) { refreshTray(() => store.list(), trayHandlers); broadcastMode(); return; }
+      let confirmAutomated = false;
+      if (mode === "automated" && !settingsStore.get().automatedConfirmed) {
         const { response } = await dialog.showMessageBox({
           type: "warning",
           buttons: ["Cancel", "Enable Automated"],
@@ -118,57 +143,45 @@ app.whenReady().then(async () => {
           message: "Enable Automated mode?",
           detail: "PR Autopilot will post reviews and approvals to your PRs automatically, with no per-PR confirmation.",
         });
-        if (response !== 1) { refreshTray(() => store.list(), trayHandlers); broadcastMode(); return; } // declined — keep current mode, resync both surfaces
-        settings = { ...settings, automatedConfirmed: true };
+        if (response !== 1) { refreshTray(() => store.list(), trayHandlers); broadcastMode(); return; } // declined — resync both surfaces
+        confirmAutomated = true;
       }
-      const wasDisabled = settings.operatingMode === "disabled";
-      settings = { ...settings, operatingMode: mode };
-      saveSettings(dataDir, settings);
-      restartPolling();
+      const wasDisabled = settingsStore.get().operatingMode === "disabled";
+      settingsStore.update({ operatingMode: mode, ...(confirmAutomated ? { automatedConfirmed: true } : {}) });
+      // subscribers: poll-timer re-arms; tray refreshes.
       if (wasDisabled && mode !== "disabled") poll();
       if (mode === "automated") orch.autoPostReady();
-      refreshTray(() => store.list(), trayHandlers);
       broadcastMode();
     }
 
     function setPollInterval(sec: number): void {
       // Ignore junk; on a no-op still rebroadcast so a stale sender resyncs.
-      if (!Number.isInteger(sec) || sec <= 0 || sec === settings.pollIntervalSec) {
+      if (!Number.isInteger(sec) || sec <= 0 || sec === settingsStore.get().pollIntervalSec) {
         broadcastPollInterval();
         return;
       }
-      settings = { ...settings, pollIntervalSec: sec };
-      saveSettings(dataDir, settings);
-      restartPolling();
+      settingsStore.update({ pollIntervalSec: sec }); // poll-timer subscriber re-arms
       broadcastPollInterval();
     }
 
     function setQueueFilters(f: { showDone: boolean; showDismissed: boolean; showClosed: boolean }): void {
-      settings = { ...settings, showDone: !!f.showDone, showDismissed: !!f.showDismissed, showClosed: !!f.showClosed };
-      saveSettings(dataDir, settings);
-      refreshTray(() => store.list(), trayHandlers);
-      broadcastQueueFilters();
+      settingsStore.update({ showDone: !!f.showDone, showDismissed: !!f.showDismissed, showClosed: !!f.showClosed });
+      broadcastQueueFilters(); // tray subscriber refreshes; broadcast resyncs the renderer
     }
 
     function setQueueSort(s: QueueSort): void {
-      settings = { ...settings, queueSort: QueueSort.parse(s) };
-      saveSettings(dataDir, settings);
-      refreshTray(() => store.list(), trayHandlers);
+      settingsStore.update({ queueSort: QueueSort.parse(s) }); // tray subscriber refreshes
     }
 
     registerIpc({
       store, orch, dataDir, nowIso,
-      getSettings: () => settings,
+      getSettings: () => settingsStore.get(),
       setSettings: (s: Settings) => {
         const parsed = Settings.parse(s);
-        // Preserve the live main-window controls — the prefs form does not own them.
-        settings = { ...parsed, operatingMode: settings.operatingMode, automatedConfirmed: settings.automatedConfirmed,
-          showDone: settings.showDone, showDismissed: settings.showDismissed, showClosed: settings.showClosed,
-          queueSort: settings.queueSort };
-        saveSettings(dataDir, settings);
-        applyLoginItem(settings.openAtLogin);
-        restartPolling();
-        broadcastPollInterval();
+        // The prefs form owns everything except the live main-window controls.
+        const { operatingMode, automatedConfirmed, showDone, showDismissed, showClosed, queueSort, ...owned } = parsed;
+        settingsStore.update(owned); // subscribers react: poll-timer / login / concurrency / tray as fields change
+        broadcastPollInterval();     // resync the renderer's interval field
       },
       setOperatingMode,
       openPreferences: () => showPreferences(),
