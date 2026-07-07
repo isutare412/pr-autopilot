@@ -201,7 +201,7 @@ describe("FindingCard", () => {
 
 describe("ActionsBar", () => {
   const draft = { overallEn: "", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
-  const props = { draft, onApprove: vi.fn(), onDismiss: vi.fn(), onRestore: vi.fn(), onDelete: vi.fn(), onFeedback: vi.fn() };
+  const props = { draft, onApprove: vi.fn(), onForceApprove: vi.fn(), onDismiss: vi.fn(), onRestore: vi.fn(), onDelete: vi.fn(), onFeedback: vi.fn() };
 
   it("shows the Post control for NEEDS_REVIEW and hides it once posted", () => {
     const { rerender } = render(<ActionsBar {...props} state="NEEDS_REVIEW" />);
@@ -281,13 +281,26 @@ describe("ActionsBar", () => {
     fireEvent.click(screen.getByRole("button", { name: /post/i }));
     expect(onApprove).toHaveBeenCalledWith("comment");
   });
+
+  it("exposes Approve anyway in POSTED_AWAITING_AUTHOR but not in NEEDS_REVIEW", () => {
+    const onForceApprove = vi.fn();
+    render(<ActionsBar {...props} state="POSTED_AWAITING_AUTHOR" onForceApprove={onForceApprove} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.click(screen.getByText("Approve anyway"));
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    expect(onForceApprove).toHaveBeenCalledTimes(1);
+    cleanup();
+    render(<ActionsBar {...props} state="NEEDS_REVIEW" onForceApprove={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    expect(screen.queryByText("Approve anyway")).not.toBeInTheDocument();
+  });
 });
 
 describe("Detail empty state", () => {
   const noop = () => {};
   it("shows the branded placeholder when no record is selected", () => {
     render(
-      <Detail record={null} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
+      <Detail record={null} onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
     );
     expect(screen.getByText("Select a PR to review")).toBeInTheDocument();
     expect(screen.getByText(/Pick a pull request from the queue/)).toBeInTheDocument();
@@ -324,14 +337,14 @@ describe("Detail — View on GitHub link", () => {
     }) as import("../../src/renderer/src/types").UiRecord;
 
   it("links the draft header to the PR url, opening in a new tab", () => {
-    render(<Detail record={rec()} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />);
+    render(<Detail record={rec()} onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />);
     const link = screen.getByRole("link", { name: /view on github/i });
     expect(link).toHaveAttribute("href", "https://github.com/owner/repo/pull/1");
     expect(link).toHaveAttribute("target", "_blank");
   });
 
   it("shows the link while a review is still generating", () => {
-    render(<Detail record={rec({ state: "GENERATING", draft: null })} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />);
+    render(<Detail record={rec({ state: "GENERATING", draft: null })} onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />);
     expect(screen.getByRole("link", { name: /view on github/i })).toHaveAttribute("href", "https://github.com/owner/repo/pull/1");
   });
 });
@@ -366,13 +379,13 @@ describe("Detail error-branch actions", () => {
 
   it("shows Hide for an errored record and Show in queue when dismissed", () => {
     render(
-      <Detail record={errRecord("ERROR")} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
+      <Detail record={errRecord("ERROR")} onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
     );
     fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
     expect(screen.getByText("Hide from queue")).toBeInTheDocument();
     cleanup();
     render(
-      <Detail record={errRecord("ERROR", true)} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
+      <Detail record={errRecord("ERROR", true)} onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
     );
     fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
     expect(screen.getByText("Show in queue")).toBeInTheDocument();

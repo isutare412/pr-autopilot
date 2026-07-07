@@ -4,6 +4,13 @@ import { RowActionsMenu } from "./RowActionsMenu";
 
 type Verdict = "approve" | "comment";
 
+/** Force-approve ("give up & LGTM") is offered only from stuck states — the normal
+ *  Post flow already lives in NEEDS_REVIEW, and in-flight/terminal states have nothing
+ *  to give up on. */
+export function canForceApprove(state: string): boolean {
+  return state === "POSTED_AWAITING_AUTHOR" || state === "STALE" || state === "ERROR";
+}
+
 interface ActionsBarProps {
   draft: UiDraft;
   state: string;
@@ -13,6 +20,7 @@ interface ActionsBarProps {
   onDismiss: () => void;
   onRestore: () => void;
   onDelete: () => void;
+  onForceApprove: () => void;
   onFeedback: (text: string) => void;
 }
 
@@ -40,7 +48,7 @@ function postSummary(draft: UiDraft, verdict: Verdict): string {
   return `${content} · ${verdict === "comment" ? "re-requests you" : "approves, done"}`;
 }
 
-export function ActionsBar({ draft, state, dismissed, postVerdict, onApprove, onDismiss, onRestore, onDelete, onFeedback }: ActionsBarProps) {
+export function ActionsBar({ draft, state, dismissed, postVerdict, onApprove, onDismiss, onRestore, onDelete, onForceApprove, onFeedback }: ActionsBarProps) {
   const [feedbackText, setFeedbackText] = useState("");
   const [verdict, setVerdict] = useState<Verdict>(postVerdict ?? defaultVerdict(draft));
 
@@ -95,6 +103,8 @@ export function ActionsBar({ draft, state, dismissed, postVerdict, onApprove, on
         <RowActionsMenu
           dismissed={hidden}
           placement="top-end"
+          canForceApprove={canForceApprove(state)}
+          onForceApprove={onForceApprove}
           onDismiss={onDismiss}
           onRestore={onRestore}
           onDelete={onDelete}

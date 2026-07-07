@@ -2,7 +2,7 @@ import type { UiRecord } from "../types";
 import { GeneratingPane } from "./GeneratingPane";
 import { FindingCard } from "./FindingCard";
 import { VerifyCard } from "./VerifyCard";
-import { ActionsBar } from "./ActionsBar";
+import { ActionsBar, canForceApprove } from "./ActionsBar";
 import { RowActionsMenu } from "./RowActionsMenu";
 
 interface DetailProps {
@@ -10,6 +10,7 @@ interface DetailProps {
   onToggle: (ref: string, included: boolean) => void;
   onEdit: (ref: string, body: string) => void;
   onApprove: (verdict: "approve" | "comment") => void;
+  onForceApprove: () => void;
   onDismiss: () => void;
   onRestore: () => void;
   onDelete: () => void;
@@ -45,7 +46,7 @@ function PrHead({ number, title, url }: { number: number; title: string; url: st
   );
 }
 
-export function Detail({ record, onToggle, onEdit, onApprove, onDismiss, onRestore, onDelete, onFeedback }: DetailProps) {
+export function Detail({ record, onToggle, onEdit, onApprove, onForceApprove, onDismiss, onRestore, onDelete, onFeedback }: DetailProps) {
   if (!record) {
     return (
       <div className="detail-empty">
@@ -88,6 +89,8 @@ export function Detail({ record, onToggle, onEdit, onApprove, onDismiss, onResto
               <RowActionsMenu
                 dismissed={!!record.dismissed}
                 placement="bottom-start"
+                canForceApprove={canForceApprove(record.state)}
+                onForceApprove={onForceApprove}
                 onDismiss={onDismiss}
                 onRestore={onRestore}
                 onDelete={onDelete}
@@ -129,6 +132,7 @@ export function Detail({ record, onToggle, onEdit, onApprove, onDismiss, onResto
         dismissed={record.dismissed}
         postVerdict={record.postVerdict}
         onApprove={onApprove}
+        onForceApprove={onForceApprove}
         onDismiss={onDismiss}
         onRestore={onRestore}
         onDelete={onDelete}

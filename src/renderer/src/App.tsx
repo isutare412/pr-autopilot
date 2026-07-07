@@ -280,6 +280,13 @@ export function App() {
               await loadList();
               await loadDetail(key);
             }}
+            onForceApprove={async () => {
+              if (!selectedKeyRef.current) return;
+              const key = selectedKeyRef.current;
+              await api.forceApprove(key);
+              await loadList();
+              await loadDetail(key);
+            }}
             onDismiss={async () => {
               if (!selectedKeyRef.current) return;
               await dismiss(selectedKeyRef.current);
