@@ -8,6 +8,7 @@ import { Detail } from "../../src/renderer/src/components/Detail";
 import { DeleteButton } from "../../src/renderer/src/components/DeleteButton";
 import { QueueFilter } from "../../src/renderer/src/components/QueueFilter";
 import { GeneratingPane } from "../../src/renderer/src/components/GeneratingPane";
+import { RowActionsMenu } from "../../src/renderer/src/components/RowActionsMenu";
 
 afterEach(cleanup);
 
@@ -35,6 +36,69 @@ describe("QueueRow", () => {
     render(<QueueRow row={row({ dismissed: true })} selected={false} onOpen={vi.fn()} onDismiss={vi.fn()} onRestore={onRestore} />);
     fireEvent.click(screen.getByRole("button", { name: /restore #7/i }));
     expect(onRestore).toHaveBeenCalledWith("k");
+  });
+});
+
+describe("RowActionsMenu", () => {
+  const base = { onDismiss: vi.fn(), onRestore: vi.fn(), onDelete: vi.fn() };
+
+  it("opens the menu and shows Hide for an active record", () => {
+    render(<RowActionsMenu {...base} dismissed={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    expect(screen.getByText("Hide from queue")).toBeInTheDocument();
+    expect(screen.queryByText("Show in queue")).not.toBeInTheDocument();
+  });
+
+  it("shows Show in queue for a dismissed record", () => {
+    render(<RowActionsMenu {...base} dismissed={true} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    expect(screen.getByText("Show in queue")).toBeInTheDocument();
+    expect(screen.queryByText("Hide from queue")).not.toBeInTheDocument();
+  });
+
+  it("fires onDismiss from Hide", () => {
+    const onDismiss = vi.fn();
+    render(<RowActionsMenu {...base} onDismiss={onDismiss} dismissed={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.click(screen.getByText("Hide from queue"));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onRestore from Show", () => {
+    const onRestore = vi.fn();
+    render(<RowActionsMenu {...base} onRestore={onRestore} dismissed={true} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.click(screen.getByText("Show in queue"));
+    expect(onRestore).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires the in-menu confirm before firing onDelete", () => {
+    const onDelete = vi.fn();
+    render(<RowActionsMenu {...base} onDelete={onDelete} dismissed={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.click(screen.getByText("Discard review"));
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByText("Discard this review?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^discard$/i }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancel aborts the discard and returns to the list", () => {
+    const onDelete = vi.fn();
+    render(<RowActionsMenu {...base} onDelete={onDelete} dismissed={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.click(screen.getByText("Discard review"));
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByText("Discard review")).toBeInTheDocument();
+  });
+
+  it("closes on Escape", () => {
+    render(<RowActionsMenu {...base} dismissed={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    expect(screen.getByText("Hide from queue")).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByText("Hide from queue")).not.toBeInTheDocument();
   });
 });
 
