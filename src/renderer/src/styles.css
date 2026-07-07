@@ -1223,6 +1223,10 @@ body {
   color: var(--ok);
 }
 
+.row-menu__item--approve:hover {
+  background: rgba(63, 178, 127, 0.1);
+}
+
 .row-menu__btn--approve {
   color: #04130c;
   background: var(--ok);
