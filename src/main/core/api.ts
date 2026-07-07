@@ -6,6 +6,7 @@ export interface ApiDeps {
   nowIso: () => string;
   enqueueGen: (key: string, feedback?: string) => void;
   enqueuePost: (key: string) => void;
+  enqueueForceApprove: (key: string) => void;
 }
 
 type Err = { error: string };
@@ -71,6 +72,17 @@ export const api = {
     rec.updatedAt = deps.nowIso();
     deps.store.put(rec);
     deps.enqueuePost(key);
+    return { ok: true };
+  },
+
+  forceApprove(deps: ApiDeps, key: string): { ok: true } | Err {
+    const rec = deps.store.get(key);
+    if (!rec) return NF;
+    rec.forceApprove = true;         // routes crash-recovery back to the force-approve lane
+    rec.state = "POSTING";
+    rec.updatedAt = deps.nowIso();
+    deps.store.put(rec);
+    deps.enqueueForceApprove(key);
     return { ok: true };
   },
 

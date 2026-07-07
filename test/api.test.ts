@@ -21,13 +21,14 @@ function seed(store: Store): PrRecord {
   return rec;
 }
 
-function mkDeps(): { deps: ApiDeps; gens: string[]; posts: string[] } {
+function mkDeps(): { deps: ApiDeps; gens: string[]; posts: string[]; forceApproves: string[] } {
   const store = new Store(mkdtempSync(join(tmpdir(), "api-")));
   seed(store);
-  const gens: string[] = [], posts: string[] = [];
+  const gens: string[] = [], posts: string[] = [], forceApproves: string[] = [];
   const deps: ApiDeps = { store, nowIso: () => "2026-06-29T00:00:00Z",
-    enqueueGen: (k) => gens.push(k), enqueuePost: (k) => posts.push(k) };
-  return { deps, gens, posts };
+    enqueueGen: (k) => gens.push(k), enqueuePost: (k) => posts.push(k),
+    enqueueForceApprove: (k) => forceApproves.push(k) };
+  return { deps, gens, posts, forceApproves };
 }
 
 describe("api", () => {
@@ -61,7 +62,7 @@ describe("api", () => {
     };
     store.put(rec);
     const deps: ApiDeps = { store, nowIso: () => "2026-06-29T00:00:00Z",
-      enqueueGen: () => {}, enqueuePost: () => {} };
+      enqueueGen: () => {}, enqueuePost: () => {}, enqueueForceApprove: () => {} };
     const out = api.toggleItem(deps, "git.linecorp.com/O/R#65", "V1", false) as PrRecord;
     expect(out.draft!.verify[0].included).toBe(false);
     expect(deps.store.get("git.linecorp.com/O/R#65")!.draft!.verify[0].included).toBe(false);
@@ -114,6 +115,25 @@ describe("api", () => {
     const out = api.approve(deps, "git.linecorp.com/O/R#999", "approve");
     expect(out).toEqual({ error: "not found" });
     expect(posts).toEqual([]);
+  });
+
+  it("forceApprove sets POSTING, marks forceApprove, and enqueues the force-approve lane", () => {
+    const { deps, forceApproves } = mkDeps();
+    const rec = deps.store.get("git.linecorp.com/O/R#65")!;
+    rec.state = "POSTED_AWAITING_AUTHOR";
+    deps.store.put(rec);
+    const out = api.forceApprove(deps, "git.linecorp.com/O/R#65");
+    expect(out).toEqual({ ok: true });
+    expect(forceApproves).toEqual(["git.linecorp.com/O/R#65"]);
+    const after = deps.store.get("git.linecorp.com/O/R#65")!;
+    expect(after.state).toBe("POSTING");
+    expect(after.forceApprove).toBe(true);
+  });
+
+  it("forceApprove returns not-found for unknown key and does not enqueue", () => {
+    const { deps, forceApproves } = mkDeps();
+    expect(api.forceApprove(deps, "git.linecorp.com/O/R#999")).toEqual({ error: "not found" });
+    expect(forceApproves).toEqual([]);
   });
 
   it("restore clears the dismissed flag and preserves lifecycle state", () => {
