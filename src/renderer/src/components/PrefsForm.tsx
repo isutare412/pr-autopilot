@@ -158,7 +158,7 @@ export function PrefsForm({ settings, onSave }: Props) {
           Save
         </button>
         <p className="prefs-restart-note">
-          Changes to GitHub host, concurrency, retention, repo filters, and Claude path take effect after the app restarts.
+          Changing the GitHub host takes effect after the app restarts. All other settings apply immediately.
         </p>
       </div>
     </form>

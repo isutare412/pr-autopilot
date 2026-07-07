@@ -61,4 +61,10 @@ describe("PrefsForm", () => {
     rerender(<PrefsForm settings={{ ...DEFAULT_SETTINGS, pollIntervalSec: 60 }} onSave={() => {}} />);
     expect(input.value).toBe("60");
   });
+
+  it("tells the user only the GitHub host needs a restart", () => {
+    render(<PrefsForm settings={DEFAULT_SETTINGS} onSave={() => {}} />);
+    expect(screen.getByText(/GitHub host takes effect after the app restarts/i)).toBeInTheDocument();
+    expect(screen.getByText(/All other settings apply immediately/i)).toBeInTheDocument();
+  });
 });
