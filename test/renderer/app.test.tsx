@@ -15,13 +15,15 @@ const api = vi.hoisted(() => ({
   openPreferences: vi.fn(),
   onRecordsChanged: vi.fn((_cb: () => void) => () => {}),
   onFocusPr: vi.fn(() => () => {}),
-  getSettings: vi.fn(async () => ({ operatingMode: "supervised", pollIntervalSec: 600, showDone: false, showDismissed: false, showClosed: false })),
+  getSettings: vi.fn(async () => ({ operatingMode: "supervised", pollIntervalSec: 600, showDone: false, showDismissed: false, showClosed: false, queueSort: { key: "activity", dir: "desc" } })),
   setMode: vi.fn(async () => {}),
   onModeChanged: vi.fn(() => () => {}),
   setPollInterval: vi.fn(async () => {}),
   onPollIntervalChanged: vi.fn((_fn: (sec: number) => void) => (() => {})),
   setQueueFilters: vi.fn(async () => {}),
   onQueueFiltersChanged: vi.fn(() => () => {}),
+  setQueueSort: vi.fn(async () => {}),
+  onTriggerPoll: vi.fn((_cb: () => void) => () => {}),
 }));
 vi.mock("../../src/renderer/src/api", () => ({ api }));
 
@@ -57,7 +59,7 @@ describe("App — Poll now", () => {
 
 describe("App — mode switch", () => {
   it("reflects the loaded mode and calls api.setMode on click", async () => {
-    api.getSettings.mockResolvedValue({ operatingMode: "disabled", pollIntervalSec: 600, showDone: false, showDismissed: false, showClosed: false });
+    api.getSettings.mockResolvedValue({ operatingMode: "disabled", pollIntervalSec: 600, showDone: false, showDismissed: false, showClosed: false, queueSort: { key: "activity", dir: "desc" } });
     render(<App />);
     // "disabled" differs from the useState default "supervised", so this can
     // only be true if the api.getSettings() load actually drove state.
@@ -131,6 +133,7 @@ describe("App — queue filters", () => {
     api.getSettings.mockResolvedValue({
       operatingMode: "supervised", pollIntervalSec: 600,
       showDone: true, showDismissed: false, showClosed: false,
+      queueSort: { key: "activity", dir: "desc" },
     });
     api.list.mockResolvedValue({ items: rows });
     // Selecting k2 loads its record; Detail renders "View on GitHub" for any record.
@@ -188,6 +191,7 @@ describe("App — queue filters", () => {
     api.getSettings.mockResolvedValue({
       operatingMode: "supervised", pollIntervalSec: 600,
       showDone: false, showDismissed: false, showClosed: false,
+      queueSort: { key: "activity", dir: "desc" },
     });
     let onRecords: (() => void) | undefined;
     api.onRecordsChanged.mockImplementationOnce((cb: () => void) => {
@@ -254,7 +258,7 @@ describe("App — settings gear", () => {
 
 describe("App — poll interval", () => {
   it("reflects the loaded pollIntervalSec in the dropdown", async () => {
-    api.getSettings.mockResolvedValue({ operatingMode: "supervised", pollIntervalSec: 900, showDone: false, showDismissed: false, showClosed: false });
+    api.getSettings.mockResolvedValue({ operatingMode: "supervised", pollIntervalSec: 900, showDone: false, showDismissed: false, showClosed: false, queueSort: { key: "activity", dir: "desc" } });
     render(<App />);
     const select = () => screen.getByRole("combobox", { name: /poll interval/i }) as HTMLSelectElement;
     await waitFor(() => expect(select().value).toBe("900"));
@@ -263,7 +267,7 @@ describe("App — poll interval", () => {
   it("shows a non-preset interval as the nearest preset without rewriting it", async () => {
     // 420s has no preset; nearest is 300 (5m). It must display as 300 but never
     // be silently persisted back — only an explicit user choice calls setPollInterval.
-    api.getSettings.mockResolvedValue({ operatingMode: "supervised", pollIntervalSec: 420, showDone: false, showDismissed: false, showClosed: false });
+    api.getSettings.mockResolvedValue({ operatingMode: "supervised", pollIntervalSec: 420, showDone: false, showDismissed: false, showClosed: false, queueSort: { key: "activity", dir: "desc" } });
     render(<App />);
     const select = () => screen.getByRole("combobox", { name: /poll interval/i }) as HTMLSelectElement;
     await waitFor(() => expect(select().value).toBe("300"));
@@ -285,5 +289,38 @@ describe("App — poll interval", () => {
     await waitFor(() => expect(cb).not.toBeNull());
     cb!(1800);
     await waitFor(() => expect(select().value).toBe("1800"));
+  });
+});
+
+describe("App queue sort + poll shortcut", () => {
+  const rows: UiRow[] = [
+    { key: "old", number: 1, repo: "zebra", title: "old", state: "NEEDS_REVIEW", mode: "first-review", counts: null, dismissed: false, updatedAt: "2026-01-01T00:00:00Z" },
+    { key: "new", number: 2, repo: "alpha", title: "new", state: "NEEDS_REVIEW", mode: "first-review", counts: null, dismissed: false, updatedAt: "2026-03-01T00:00:00Z" },
+  ];
+
+  it("renders the queue newest-first by default", async () => {
+    api.list.mockResolvedValueOnce({ items: rows });
+    const { container } = render(<App />);
+    await waitFor(() => expect(container.querySelectorAll(".queue-list .row").length).toBe(2));
+    const keys = Array.from(container.querySelectorAll<HTMLElement>(".queue-list .row")).map((el) => el.dataset.key);
+    expect(keys).toEqual(["new", "old"]);
+  });
+
+  it("persists a sort change through api.setQueueSort", async () => {
+    api.list.mockResolvedValueOnce({ items: rows });
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /filter/i }));
+    fireEvent.click(screen.getByRole("button", { name: /filter/i }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /recent activity/i }));
+    expect(api.setQueueSort).toHaveBeenCalledWith({ key: "activity", dir: "asc" });
+  });
+
+  it("fires a poll when the trigger-poll event arrives", async () => {
+    let trigger: (() => void) | undefined;
+    api.onTriggerPoll.mockImplementation((cb: () => void) => { trigger = cb; return () => {}; });
+    render(<App />);
+    await waitFor(() => expect(trigger).toBeDefined());
+    act(() => trigger!());
+    await waitFor(() => expect(api.pollNow).toHaveBeenCalled());
   });
 });

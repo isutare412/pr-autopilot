@@ -5,6 +5,7 @@ import { QueueRow } from "./components/QueueRow";
 import { QueueFilter } from "./components/QueueFilter";
 import { Detail } from "./components/Detail";
 import { isQueueVisible } from "./visibility";
+import { sortRows, DEFAULT_QUEUE_SORT, type QueueSort } from "./queueSort";
 
 type OperatingMode = "disabled" | "supervised" | "automated";
 const MODE_LABEL: Record<OperatingMode, string> = {
@@ -32,6 +33,7 @@ export function App() {
   const [showClosed, setShowClosed] = useState(false);
   const [mode, setMode] = useState<OperatingMode>("supervised");
   const [pollIntervalSec, setPollIntervalSec] = useState(600);
+  const [sort, setSort] = useState<QueueSort>(DEFAULT_QUEUE_SORT);
 
   // Ref so stable subscriptions (bound once on mount) can read the current key
   // without re-binding whenever selectedKey state changes.
@@ -89,6 +91,8 @@ export function App() {
       setPolling(false);
     }
   }
+  const pollNowRef = useRef(pollNow);
+  pollNowRef.current = pollNow;
 
   function applyFilters(next: { showDone: boolean; showDismissed: boolean; showClosed: boolean }) {
     setShowDone(next.showDone);
@@ -97,14 +101,20 @@ export function App() {
     api.setQueueFilters(next);
   }
 
+  function applySort(next: QueueSort) {
+    setSort(next);
+    api.setQueueSort(next);
+  }
+
   useEffect(() => {
     loadList();
-    api.getSettings().then((s: { operatingMode?: OperatingMode; pollIntervalSec?: number; showDone?: boolean; showDismissed?: boolean; showClosed?: boolean }) => {
+    api.getSettings().then((s: { operatingMode?: OperatingMode; pollIntervalSec?: number; showDone?: boolean; showDismissed?: boolean; showClosed?: boolean; queueSort?: QueueSort }) => {
       if (s?.operatingMode) setMode(s.operatingMode);
       if (typeof s?.pollIntervalSec === "number") setPollIntervalSec(s.pollIntervalSec);
       if (typeof s?.showDone === "boolean") setShowDone(s.showDone);
       if (typeof s?.showDismissed === "boolean") setShowDismissed(s.showDismissed);
       if (typeof s?.showClosed === "boolean") setShowClosed(s.showClosed);
+      if (s?.queueSort) setSort(s.queueSort);
     }).catch((e) => console.error("[getSettings]", e));
     // Subscribe once; use ref so these closures always read the current selection.
     const offMode = api.onModeChanged((m: string) => setMode(m as OperatingMode));
@@ -119,12 +129,14 @@ export function App() {
       if (selectedKeyRef.current) loadDetail(selectedKeyRef.current);
     });
     const off2 = api.onFocusPr((k) => loadDetail(k));
+    const offPoll = api.onTriggerPoll(() => pollNowRef.current());
     return () => {
       offMode();
       offInterval();
       offFilters();
       off1();
       off2();
+      offPoll();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -133,6 +145,7 @@ export function App() {
   const dismissedCount = rows.filter((r) => r.dismissed).length;
   const closedCount = rows.filter((r) => r.state === "CLOSED").length;
   const visibleRows = rows.filter((r) => isQueueVisible(r, { showDone, showDismissed, showClosed }));
+  const sortedRows = sortRows(visibleRows, sort);
 
   // Never keep a PR focused in the detail pane once it has left the queue's
   // visible set — whether its row was hidden by a filter toggle (from here or
@@ -240,6 +253,8 @@ export function App() {
               dismissedCount={dismissedCount}
               closedCount={closedCount}
               onChange={applyFilters}
+              sort={sort}
+              onSortChange={applySort}
             />
           </div>
           <div className="queue-list">
@@ -248,7 +263,7 @@ export function App() {
                 No reviews in the queue yet — they'll appear here as PRs request your review.
               </div>
             ) : (
-              visibleRows.map((row) => (
+              sortedRows.map((row) => (
                 <QueueRow
                   key={row.key}
                   row={row}
