@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { UiDraft } from "../types";
-import { DeleteButton } from "./DeleteButton";
+import { RowActionsMenu } from "./RowActionsMenu";
 
 type Verdict = "approve" | "comment";
 
@@ -92,12 +92,13 @@ export function ActionsBar({ draft, state, dismissed, postVerdict, onApprove, on
         <span className="summary">already {pretty}</span>
       )}
       <div className="actions-trailing">
-        {hidden ? (
-          <button type="button" className="del-btn" onClick={onRestore}>Restore</button>
-        ) : (
-          <button type="button" className="del-btn" onClick={onDismiss}>Dismiss</button>
-        )}
-        <DeleteButton onDelete={onDelete} />
+        <RowActionsMenu
+          dismissed={hidden}
+          placement="top-end"
+          onDismiss={onDismiss}
+          onRestore={onRestore}
+          onDelete={onDelete}
+        />
       </div>
       <div className="fb">
         <textarea

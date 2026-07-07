@@ -187,11 +187,14 @@ describe("ActionsBar", () => {
     expect(onApprove).toHaveBeenLastCalledWith("comment");
   });
 
-  it("shows Dismiss for an active record and Restore for a dismissed one", () => {
-    const { rerender } = render(<ActionsBar {...props} state="NEEDS_REVIEW" />);
-    expect(screen.getByRole("button", { name: /^dismiss$/i })).toBeInTheDocument();
-    rerender(<ActionsBar {...props} state="NEEDS_REVIEW" dismissed />);
-    expect(screen.getByRole("button", { name: /^restore$/i })).toBeInTheDocument();
+  it("shows Hide for an active record and Show in queue for a dismissed one", () => {
+    render(<ActionsBar {...props} state="NEEDS_REVIEW" />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    expect(screen.getByText("Hide from queue")).toBeInTheDocument();
+    cleanup();
+    render(<ActionsBar {...props} state="NEEDS_REVIEW" dismissed />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    expect(screen.getByText("Show in queue")).toBeInTheDocument();
   });
 
   it("sends feedback on Cmd+Enter and clears the textarea", () => {
