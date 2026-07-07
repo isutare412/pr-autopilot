@@ -162,3 +162,10 @@ export function prKey(host: string, owner: string, repo: string, number: number)
 export function fileKey(host: string, owner: string, repo: string, number: number): string {
   return `${host}__${owner}__${repo}__${number}`;
 }
+
+export const QueueSort = z.object({
+  key: z.enum(["activity", "repo"]),
+  dir: z.enum(["asc", "desc"]),
+});
+export type QueueSort = z.infer<typeof QueueSort>;
+export const DEFAULT_QUEUE_SORT: QueueSort = { key: "activity", dir: "desc" };
