@@ -127,6 +127,7 @@ export const PrRecord = z.object({
   postResult: PostResult.nullable(),
   postProgress: PostProgress.nullable(),
   postVerdict: PostVerdict.optional(),   // disposition chosen at approve time; absent → derive from draft
+  forceApprove: z.boolean().optional(),   // transient: a give-up approval is in flight (crash-recovery routing)
   error: z.object({ step: z.string(), message: z.string() }).nullable(),
   genActivity: z.array(z.string()).optional(), // live "what CC is doing" feed, present only while GENERATING
   discoveredAt: z.string(),

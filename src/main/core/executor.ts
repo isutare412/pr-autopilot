@@ -124,3 +124,22 @@ export async function execute(
     doneAt: state === "DONE" ? nowIso : null,
   };
 }
+
+/** Give-up approval: post a bare LGTM APPROVE against the live head and finish.
+ *  Ignores the draft entirely — no replies, no resolves, no findings — so any open
+ *  threads/comments are left exactly as they are. Approves the *live* head, so a
+ *  STALE record just works (no STALE bail, unlike execute()). Only pre-flight is the
+ *  open-PR check: a merged/closed PR becomes CLOSED rather than a failed approve. */
+export async function forceApprove(gh: Gh, rec: PrRecord, nowIso: string): Promise<PrRecord> {
+  const { state: prState, headSha: liveSha } = await gh.prStatus(rec.owner, rec.repo, rec.number);
+  if (prState !== "OPEN") return { ...rec, state: "CLOSED", forceApprove: false, updatedAt: nowIso };
+
+  const res = await gh.postReview(rec.owner, rec.repo, rec.number, {
+    event: "APPROVE", body: APPROVE_BODY, commit_id: liveSha,
+  });
+  return {
+    ...rec, state: "DONE", postVerdict: "approve", headSha: liveSha,
+    postResult: { reviewUrl: res.html_url, postedAt: nowIso, resolvedThreadIds: [] },
+    forceApprove: false, updatedAt: nowIso, doneAt: nowIso,
+  };
+}

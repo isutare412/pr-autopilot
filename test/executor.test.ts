@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Gh, GhRunner } from "../src/main/core/gh";
-import { execute, buildReviewPayload, defaultVerdict } from "../src/main/core/executor";
+import { execute, buildReviewPayload, defaultVerdict, forceApprove } from "../src/main/core/executor";
 import type { PrRecord } from "../src/main/core/schema";
 
 function baseRec(over: Partial<PrRecord> = {}): PrRecord {
@@ -301,5 +301,56 @@ describe("execute", () => {
     expect(JSON.parse(review!.input!).event).toBe("COMMENT");
     expect(rec.calls.some((c) => c.args.includes("/repos/O/R/pulls/65/requested_reviewers"))).toBe(true);
     expect(out.state).toBe("POSTED_AWAITING_AUTHOR");
+  });
+});
+
+describe("forceApprove", () => {
+  it("posts a bare APPROVE LGTM against the live head, then DONE", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const out = await forceApprove(gh, baseRec({ state: "POSTED_AWAITING_AUTHOR" }), "2026-06-29T00:00:00Z");
+    const review = rec.calls.find((c) => c.args.some((a) => a.includes("/reviews")));
+    const payload = JSON.parse(review!.input!);
+    expect(payload.event).toBe("APPROVE");
+    expect(payload.body).toBe("LGTM :+1:");
+    expect(payload.commit_id).toBe("SHA1");
+    expect(out.state).toBe("DONE");
+    expect(out.postResult?.reviewUrl).toBe("http://x/r/1");
+    expect(out.doneAt).toBe("2026-06-29T00:00:00Z");
+    expect(out.forceApprove).toBe(false);
+  });
+
+  it("approves the live head even when rec.headSha is stale (no STALE bail)", async () => {
+    const { gh, rec } = ghWith("SHA2");   // live head moved past rec.headSha=SHA1
+    const out = await forceApprove(gh, baseRec({ state: "STALE", headSha: "SHA1" }), "t");
+    const review = rec.calls.find((c) => c.args.some((a) => a.includes("/reviews")));
+    expect(JSON.parse(review!.input!).commit_id).toBe("SHA2");
+    expect(out.state).toBe("DONE");
+    expect(out.headSha).toBe("SHA2");
+  });
+
+  it("leaves open comments behind — never replies or resolves", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const r = baseRec({ state: "POSTED_AWAITING_AUTHOR" });
+    r.draft!.verify = [
+      { id: "v1", ref: "V1", threadNodeId: "N1", replyTargetDatabaseId: 111, path: "a.go", line: 1,
+        verdict: "follow-up", rationaleEn: "open", replyBody: "**[Major]** ...", included: true, editedBody: null },
+    ];
+    await forceApprove(gh, r, "t");
+    expect(rec.calls.some((c) => c.args.some((a) => a.includes("/replies")))).toBe(false);
+    expect(rec.calls.some((c) => c.args.includes("threadId=N1"))).toBe(false);
+  });
+
+  it("non-open PR → CLOSED, no review posted", async () => {
+    const { gh, rec } = ghWith("SHA1", "MERGED");
+    const out = await forceApprove(gh, baseRec({ state: "POSTED_AWAITING_AUTHOR" }), "t");
+    expect(out.state).toBe("CLOSED");
+    expect(rec.calls.some((c) => c.args.some((a) => a.includes("/reviews")))).toBe(false);
+  });
+
+  it("works with no draft (ERROR-origin) — still approves", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const out = await forceApprove(gh, baseRec({ state: "ERROR", draft: null }), "t");
+    expect(out.state).toBe("DONE");
+    expect(rec.calls.some((c) => c.args.some((a) => a.includes("/reviews")))).toBe(true);
   });
 });
