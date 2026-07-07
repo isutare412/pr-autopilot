@@ -48,8 +48,8 @@ export function QueueRow({ row, selected, onOpen, onDismiss, onRestore }: QueueR
       <button
         className="row-action"
         data-key={row.key}
-        title={hidden ? "Restore" : "Dismiss"}
-        aria-label={`${hidden ? "Restore" : "Dismiss"} #${row.number}`}
+        title={hidden ? "Show" : "Hide"}
+        aria-label={`${hidden ? "Show" : "Hide"} #${row.number}`}
         onClick={handleAction}
       >
         {hidden ? RESTORE_ICON : DISMISS_ICON}

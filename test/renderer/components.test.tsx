@@ -26,14 +26,14 @@ describe("QueueRow", () => {
   it("fires onDismiss from an active row's action button", () => {
     const onDismiss = vi.fn();
     render(<QueueRow row={row()} selected={false} onOpen={vi.fn()} onDismiss={onDismiss} onRestore={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: /dismiss #7/i }));
+    fireEvent.click(screen.getByRole("button", { name: /hide #7/i }));
     expect(onDismiss).toHaveBeenCalledWith("k");
   });
 
   it("fires onRestore from a dismissed row's action button", () => {
     const onRestore = vi.fn();
     render(<QueueRow row={row({ dismissed: true })} selected={false} onOpen={vi.fn()} onDismiss={vi.fn()} onRestore={onRestore} />);
-    fireEvent.click(screen.getByRole("button", { name: /restore #7/i }));
+    fireEvent.click(screen.getByRole("button", { name: /show #7/i }));
     expect(onRestore).toHaveBeenCalledWith("k");
   });
 });
