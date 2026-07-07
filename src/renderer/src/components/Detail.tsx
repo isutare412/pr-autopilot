@@ -3,7 +3,7 @@ import { GeneratingPane } from "./GeneratingPane";
 import { FindingCard } from "./FindingCard";
 import { VerifyCard } from "./VerifyCard";
 import { ActionsBar } from "./ActionsBar";
-import { DeleteButton } from "./DeleteButton";
+import { RowActionsMenu } from "./RowActionsMenu";
 
 interface DetailProps {
   record: UiRecord | null;
@@ -85,12 +85,13 @@ export function Detail({ record, onToggle, onEdit, onApprove, onDismiss, onResto
             </div>
             <pre className="error-msg">{e.message}</pre>
             <div className="actions-inline">
-              {record.dismissed ? (
-                <button type="button" className="del-btn" onClick={onRestore}>Restore</button>
-              ) : (
-                <button type="button" className="del-btn" onClick={onDismiss}>Dismiss</button>
-              )}
-              <DeleteButton onDelete={onDelete} />
+              <RowActionsMenu
+                dismissed={!!record.dismissed}
+                placement="bottom-start"
+                onDismiss={onDismiss}
+                onRestore={onRestore}
+                onDelete={onDelete}
+              />
             </div>
           </div>
         ) : (

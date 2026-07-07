@@ -350,15 +350,18 @@ describe("Detail error-branch actions", () => {
     dismissed,
   } as import("../../src/renderer/src/types").UiRecord);
 
-  it("shows Dismiss for an errored record and Restore when dismissed", () => {
-    const { rerender } = render(
+  it("shows Hide for an errored record and Show in queue when dismissed", () => {
+    render(
       <Detail record={errRecord("ERROR")} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
     );
-    expect(screen.getByRole("button", { name: /^dismiss$/i })).toBeInTheDocument();
-    rerender(
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    expect(screen.getByText("Hide from queue")).toBeInTheDocument();
+    cleanup();
+    render(
       <Detail record={errRecord("ERROR", true)} onToggle={noop} onEdit={noop} onApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />,
     );
-    expect(screen.getByRole("button", { name: /^restore$/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    expect(screen.getByText("Show in queue")).toBeInTheDocument();
   });
 });
 
