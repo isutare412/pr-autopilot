@@ -19,6 +19,7 @@ export function registerIpc(d: IpcDeps): void {
   const apiDeps: ApiDeps = {
     store: d.store, nowIso: d.nowIso,
     enqueueGen: d.orch.enqueueGen, enqueuePost: d.orch.enqueuePost,
+    enqueueForceApprove: d.orch.enqueueForceApprove,
   };
   ipcMain.handle("pr:list", () => api.list(apiDeps));
   ipcMain.handle("pr:get", (_e, key: string) => api.get(apiDeps, key));
@@ -26,6 +27,7 @@ export function registerIpc(d: IpcDeps): void {
   ipcMain.handle("pr:edit", (_e, key: string, ref: string, editedBody: string | null) => api.editItem(apiDeps, key, ref, editedBody));
   ipcMain.handle("pr:feedback", (_e, key: string, text: string) => api.submitFeedback(apiDeps, key, text));
   ipcMain.handle("pr:approve", (_e, key: string, verdict: "approve" | "comment") => api.approve(apiDeps, key, verdict));
+  ipcMain.handle("pr:forceApprove", (_e, key: string) => api.forceApprove(apiDeps, key));
   ipcMain.handle("pr:dismiss", (_e, key: string) => api.dismiss(apiDeps, key));
   ipcMain.handle("pr:restore", (_e, key: string) => api.restore(apiDeps, key));
   ipcMain.handle("pr:delete", (_e, key: string) => api.delete(apiDeps, key));

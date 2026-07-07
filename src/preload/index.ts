@@ -7,6 +7,7 @@ const api = {
   edit: (key: string, ref: string, editedBody: string | null) => ipcRenderer.invoke("pr:edit", key, ref, editedBody),
   feedback: (key: string, text: string) => ipcRenderer.invoke("pr:feedback", key, text),
   approve: (key: string, verdict: "approve" | "comment") => ipcRenderer.invoke("pr:approve", key, verdict),
+  forceApprove: (key: string) => ipcRenderer.invoke("pr:forceApprove", key),
   dismiss: (key: string) => ipcRenderer.invoke("pr:dismiss", key),
   restore: (key: string) => ipcRenderer.invoke("pr:restore", key),
   delete: (key: string) => ipcRenderer.invoke("pr:delete", key),
