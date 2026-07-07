@@ -231,6 +231,28 @@ describe("runForceApprove", () => {
   });
 });
 
+describe("runGeneration terminal guard (force-approve race)", () => {
+  it("skipIfTerminal does not resurrect a DONE record (force-approve won the race)", async () => {
+    const { orch, store } = mkOrch();
+    const genSpy = vi.fn(async () => draft);
+    orch.generate = genSpy;
+    const key = seed(store, 70, "DONE", { draft, draftVersion: 1, doneAt: "t",
+      postResult: { reviewUrl: "http://x/r/1", postedAt: "t", resolvedThreadIds: [] } });
+    await orch.runGeneration(key, "re-review",
+      { url: "http://x/O/R/pull/70", owner: "O", repo: "R", number: 70, title: "t" }, undefined, true);
+    expect(genSpy).not.toHaveBeenCalled();
+    expect(store.get(key)!.state).toBe("DONE");
+  });
+
+  it("poll-driven regeneration (no flag) still re-reviews a DONE record whose head advanced", async () => {
+    const { orch, store } = mkOrch();
+    const key = seed(store, 71, "DONE", { draft, draftVersion: 1, doneAt: "t" });
+    await orch.runGeneration(key, "re-review",
+      { url: "http://x/O/R/pull/71", owner: "O", repo: "R", number: 71, title: "t" });
+    expect(store.get(key)!.state).toBe("NEEDS_REVIEW");
+  });
+});
+
 describe("recoverInFlight — force-approve routing", () => {
   it("routes a POSTING+forceApprove record to the force-approve lane, plain POSTING to normal post", () => {
     const { orch, store } = mkOrch();

@@ -42,7 +42,7 @@ export class Orchestrator {
       const rec = this.store.get(key);
       if (!rec) return;
       await this.runGeneration(key, rec.mode,
-        { url: rec.url, owner: rec.owner, repo: rec.repo, number: rec.number, title: rec.title }, feedback);
+        { url: rec.url, owner: rec.owner, repo: rec.repo, number: rec.number, title: rec.title }, feedback, true);
     });
   };
 
@@ -54,9 +54,15 @@ export class Orchestrator {
     this.postQueue.submit(key, () => this.runForceApprove(key));
   };
 
-  async runGeneration(key: string, mode: Mode, pr: SearchPr, feedback?: string): Promise<void> {
+  async runGeneration(key: string, mode: Mode, pr: SearchPr, feedback?: string, skipIfTerminal = false): Promise<void> {
     await this.store.withLock(key, async () => {
       let rec = this.store.get(key);
+      // A terminal record means another lane finished this PR while a regen sat
+      // queued — e.g. a give-up force-approve on a STALE record won the postQueue
+      // race and set DONE. Don't resurrect it. Only the recovery/feedback/STALE
+      // lane (enqueueGen) opts in; poll-driven re-review, which legitimately
+      // regenerates a DONE record whose head advanced, calls without the flag.
+      if (skipIfTerminal && rec && (rec.state === "DONE" || rec.state === "CLOSED")) return;
       const now = this.d.nowIso();
       // Record the live head we're about to review against, captured at generation
       // start (the review's `gh pr diff` runs against this head). Recording a stale
