@@ -28,6 +28,12 @@ export class JobQueue {
     return new Promise((r) => this.idleResolvers.push(r));
   }
 
+  setConcurrency(n: number): void {
+    if (!Number.isInteger(n) || n < 1) return;
+    this.concurrency = n;
+    this.pump();
+  }
+
   private pump(): void {
     while (this.running.size < this.concurrency && this.queued.length > 0) {
       const job = this.queued.shift()!;
