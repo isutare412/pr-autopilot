@@ -1,17 +1,23 @@
 import { Menu } from "electron";
 
-export function installAppMenu(onPreferences: () => void): void {
+export interface AppMenuHandlers {
+  onPreferences: () => void;
+  onPollNow: () => void;
+}
+
+export function installAppMenu(h: AppMenuHandlers): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: "PR Autopilot",
       submenu: [
         { role: "about" },
         { type: "separator" },
-        { label: "Preferences…", accelerator: "CmdOrCtrl+,", click: () => onPreferences() },
+        { label: "Preferences…", accelerator: "CmdOrCtrl+,", click: () => h.onPreferences() },
+        { label: "Poll Now", accelerator: "CmdOrCtrl+R", click: () => h.onPollNow() },
         { type: "separator" },
         { role: "hide" }, { role: "hideOthers" }, { role: "unhide" },
         { type: "separator" },
-        { role: "quit" }, // Cmd+Q → app.quit(); the before-quit flag (Step 2) lets the window actually close
+        { role: "quit" },
       ],
     },
     {

@@ -4,7 +4,7 @@ import { api, ApiDeps } from "./core/api";
 import { Store } from "./core/store";
 import { Orchestrator } from "./core/orchestrator";
 import { Settings } from "./settings";
-import { OperatingMode } from "./core/schema";
+import { OperatingMode, QueueSort } from "./core/schema";
 
 export interface IpcDeps {
   store: Store; orch: Orchestrator; dataDir: string;
@@ -13,6 +13,7 @@ export interface IpcDeps {
   openPreferences: () => void;
   setPollInterval: (sec: number) => void;
   setQueueFilters: (f: { showDone: boolean; showDismissed: boolean; showClosed: boolean }) => void;
+  setQueueSort: (s: QueueSort) => void;
 }
 
 export function registerIpc(d: IpcDeps): void {
@@ -38,6 +39,7 @@ export function registerIpc(d: IpcDeps): void {
   ipcMain.handle("app:openPreferences", () => d.openPreferences());
   ipcMain.handle("poll-interval:set", (_e, sec: number) => d.setPollInterval(sec));
   ipcMain.handle("queue-filters:set", (_e, f: { showDone: boolean; showDismissed: boolean; showClosed: boolean }) => d.setQueueFilters(f));
+  ipcMain.handle("queue-sort:set", (_e, s: QueueSort) => d.setQueueSort(s));
 }
 
 /** The Store rewrites index.json on every put; watch the directory and notify all windows.

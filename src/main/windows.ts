@@ -33,6 +33,8 @@ export function showMain(key?: string): void {
   if (key) main.webContents.send("focus-pr", key);
 }
 
+export function getMain(): BrowserWindow | null { return main; }
+
 export function showPreferences(): void {
   if (!prefs) {
     prefs = new BrowserWindow({ width: 520, height: 600, title: "Preferences", webPreferences: { preload: PRELOAD } });

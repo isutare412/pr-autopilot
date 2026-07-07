@@ -5,12 +5,12 @@ import { Gh, realGhRunner } from "./core/gh";
 import { realClaudeSpawner, generate as genFn } from "./core/generator";
 import { Orchestrator } from "./core/orchestrator";
 import { loadSettings, saveSettings, Settings } from "./settings";
-import { OperatingMode } from "./core/schema";
+import { OperatingMode, QueueSort } from "./core/schema";
 import { electronNotifier } from "./notify-electron";
 import { resolvePath, expandTilde, getPluginDir, getDataDir } from "./paths";
 import { registerIpc, watchStoreForChanges } from "./ipc";
 import { createTray, refreshTray, TrayHandlers } from "./tray";
-import { showMain, showPreferences, openExternal } from "./windows";
+import { showMain, showPreferences, openExternal, getMain } from "./windows";
 import { applyLoginItem } from "./lifecycle";
 import { installAppMenu } from "./menu";
 
@@ -65,10 +65,18 @@ app.whenReady().then(async () => {
       getMode: () => settings.operatingMode,
       setMode: (m) => { setOperatingMode(m).catch((e) => console.error("[setMode]", e)); },
       getFilters: () => ({ showDone: settings.showDone, showDismissed: settings.showDismissed, showClosed: settings.showClosed }),
+      getSort: () => settings.queueSort,
     };
 
     applyLoginItem(settings.openAtLogin);
-    installAppMenu(() => showPreferences());   // Cmd+, + clipboard shortcuts
+    installAppMenu({
+      onPreferences: () => showPreferences(),
+      onPollNow: () => {
+        const w = getMain();
+        if (w && !w.isDestroyed()) w.webContents.send("trigger-poll");
+        else trayHandlers.pollNow();
+      },
+    });
     createTray(() => store.list(), trayHandlers);
     // Re-swap the light/dark badge variant when the system appearance changes.
     nativeTheme.on("updated", () => refreshTray(() => store.list(), trayHandlers));
@@ -142,6 +150,12 @@ app.whenReady().then(async () => {
       broadcastQueueFilters();
     }
 
+    function setQueueSort(s: QueueSort): void {
+      settings = { ...settings, queueSort: QueueSort.parse(s) };
+      saveSettings(dataDir, settings);
+      refreshTray(() => store.list(), trayHandlers);
+    }
+
     registerIpc({
       store, orch, dataDir, nowIso,
       getSettings: () => settings,
@@ -149,7 +163,8 @@ app.whenReady().then(async () => {
         const parsed = Settings.parse(s);
         // Preserve the live main-window controls — the prefs form does not own them.
         settings = { ...parsed, operatingMode: settings.operatingMode, automatedConfirmed: settings.automatedConfirmed,
-          showDone: settings.showDone, showDismissed: settings.showDismissed, showClosed: settings.showClosed };
+          showDone: settings.showDone, showDismissed: settings.showDismissed, showClosed: settings.showClosed,
+          queueSort: settings.queueSort };
         saveSettings(dataDir, settings);
         applyLoginItem(settings.openAtLogin);
         restartPolling();
@@ -159,6 +174,7 @@ app.whenReady().then(async () => {
       openPreferences: () => showPreferences(),
       setPollInterval,
       setQueueFilters,
+      setQueueSort,
     });
     watchStoreForChanges(dataDir, () => refreshTray(() => store.list(), trayHandlers));
 

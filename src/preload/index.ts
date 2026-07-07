@@ -18,6 +18,7 @@ const api = {
   setMode: (m: string) => ipcRenderer.invoke("mode:set", m),
   setPollInterval: (sec: number) => ipcRenderer.invoke("poll-interval:set", sec),
   setQueueFilters: (f: { showDone: boolean; showDismissed: boolean; showClosed: boolean }) => ipcRenderer.invoke("queue-filters:set", f),
+  setQueueSort: (s: { key: "activity" | "repo"; dir: "asc" | "desc" }) => ipcRenderer.invoke("queue-sort:set", s),
   onRecordsChanged: (cb: () => void) => {
     const fn = () => cb();
     ipcRenderer.on("records-changed", fn);
@@ -42,6 +43,11 @@ const api = {
     const fn = (_e: unknown, key: string) => cb(key);
     ipcRenderer.on("focus-pr", fn);
     return () => ipcRenderer.removeListener("focus-pr", fn);
+  },
+  onTriggerPoll: (cb: () => void) => {
+    const fn = () => cb();
+    ipcRenderer.on("trigger-poll", fn);
+    return () => ipcRenderer.removeListener("trigger-poll", fn);
   },
 };
 contextBridge.exposeInMainWorld("api", api);
