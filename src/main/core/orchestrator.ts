@@ -12,14 +12,14 @@ export interface OrchestratorDeps {
   notifier: { send: (title: string, message: string, url: string) => Promise<void> };
   nowIso: () => string;
   login: string;
-  retentionDays: number;
+  retentionDays: () => number;
   concurrency: number;
   host: string;
   language: () => Language;
   effort: () => Effort;
   operatingMode: () => OperatingMode;
-  repoAllow?: string[];
-  repoDeny?: string[];
+  repoAllow?: () => string[];
+  repoDeny?: () => string[];
 }
 
 export class Orchestrator {
@@ -35,6 +35,11 @@ export class Orchestrator {
     this.generate = deps.generate;
     this.genQueue = new JobQueue(deps.concurrency);
     this.postQueue = new JobQueue(deps.concurrency);
+  }
+
+  setConcurrency(n: number): void {
+    this.genQueue.setConcurrency(n);
+    this.postQueue.setConcurrency(n);
   }
 
   enqueueGen = (key: string, feedback?: string) => {
@@ -222,14 +227,14 @@ export class Orchestrator {
     }
 
     const work = decideWork({ queue, existing, liveHeads, authorRepliedKeys,
-      repoAllow: this.d.repoAllow, repoDeny: this.d.repoDeny, host: this.d.host });
+      repoAllow: this.d.repoAllow?.(), repoDeny: this.d.repoDeny?.(), host: this.d.host });
     for (const w of work) {
       this.genQueue.submit(w.key, () => this.runGeneration(w.key, w.mode, w.pr));
     }
   }
 
   pruneNow(): string[] {
-    return this.store.prune(this.d.retentionDays, this.d.nowIso());
+    return this.store.prune(this.d.retentionDays(), this.d.nowIso());
   }
 
   /** Resume work orphaned by a previous daemon exit. At startup nothing is truly

@@ -27,7 +27,7 @@ function mkOrch() {
     notifier: { send: vi.fn(async () => {}) },
     nowIso: () => "2026-06-29T00:00:00Z",
     login: "me",
-    retentionDays: 30,
+    retentionDays: () => 30,
     concurrency: 2,
     host: "git.linecorp.com",
     language: () => "en",
@@ -132,7 +132,7 @@ describe("Orchestrator", () => {
       notifier: { send: vi.fn(async () => {}) },
       nowIso: () => "2026-06-29T00:00:00Z",
       login: "me",
-      retentionDays: 30,
+      retentionDays: () => 30,
       concurrency: 2,
       host: "git.linecorp.com",
       language: () => "en",
@@ -371,5 +371,46 @@ describe("Orchestrator — poll sweep", () => {
     (orch as any).d.gh.prState = async () => { throw new Error("boom"); };
     await orch.runPoll();
     expect(store.get(key)!.state).toBe("NEEDS_REVIEW");
+  });
+});
+
+describe("Orchestrator — live settings", () => {
+  it("setConcurrency forwards to both the gen and post queues", () => {
+    const { orch } = mkOrch();
+    const genSpy = vi.spyOn(orch.genQueue, "setConcurrency");
+    const postSpy = vi.spyOn(orch.postQueue, "setConcurrency");
+    orch.setConcurrency(5);
+    expect(genSpy).toHaveBeenCalledWith(5);
+    expect(postSpy).toHaveBeenCalledWith(5);
+  });
+
+  it("pruneNow reads the current retentionDays getter on each call", () => {
+    const store = new Store(mkdtempSync(join(tmpdir(), "orch-")));
+    const pruneSpy = vi.spyOn(store, "prune").mockReturnValue([]);
+    let days = 30;
+    const orch = new Orchestrator({
+      store, gh: {} as any,
+      generate: vi.fn(async () => draft),
+      notifier: { send: vi.fn(async () => {}) },
+      nowIso: () => "2026-06-29T00:00:00Z",
+      login: "me", retentionDays: () => days, concurrency: 2, host: "h",
+      language: () => "en", effort: () => "high", operatingMode: () => "supervised",
+    });
+    orch.pruneNow();
+    expect(pruneSpy).toHaveBeenLastCalledWith(30, expect.any(String));
+    days = 7;
+    orch.pruneNow();
+    expect(pruneSpy).toHaveBeenLastCalledWith(7, expect.any(String));
+  });
+
+  it("runPoll reads the repoAllow/repoDeny getters on each poll", async () => {
+    const { orch } = mkOrch();
+    const allow = vi.fn(() => [] as string[]);
+    const deny = vi.fn(() => [] as string[]);
+    (orch as any).d.repoAllow = allow;
+    (orch as any).d.repoDeny = deny;
+    await orch.runPoll();
+    expect(allow).toHaveBeenCalled();
+    expect(deny).toHaveBeenCalled();
   });
 });
