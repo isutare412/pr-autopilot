@@ -51,7 +51,7 @@ export function RowActionsMenu({ dismissed, placement = "top-end", onDismiss, on
         ⋯
       </button>
       {open && (
-        <div className={`row-menu__pop row-menu__pop--${placement}`} role="menu">
+        <div className={`row-menu__pop row-menu__pop--${placement}`} role={confirming ? undefined : "menu"}>
           {confirming ? (
             <div className="row-menu__confirm">
               <div className="row-menu__confirm-q">Discard this review?</div>

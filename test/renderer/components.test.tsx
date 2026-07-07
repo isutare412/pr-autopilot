@@ -99,6 +99,14 @@ describe("RowActionsMenu", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(screen.queryByText("Hide from queue")).not.toBeInTheDocument();
   });
+
+  it("closes on an outside click", () => {
+    render(<RowActionsMenu {...base} dismissed={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    expect(screen.getByText("Hide from queue")).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByText("Hide from queue")).not.toBeInTheDocument();
+  });
 });
 
 describe("QueueFilter", () => {
