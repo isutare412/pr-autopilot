@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { Language, Effort, OperatingMode } from "./core/schema";
+import { Language, Effort, OperatingMode, QueueSort, DEFAULT_QUEUE_SORT } from "./core/schema";
 
 export const Settings = z.object({
   githubHost: z.string().default("github.com"),
@@ -13,6 +13,7 @@ export const Settings = z.object({
   showDone: z.boolean().default(false),
   showDismissed: z.boolean().default(false),
   showClosed: z.boolean().default(false),
+  queueSort: QueueSort.default(DEFAULT_QUEUE_SORT),
   genConcurrency: z.number().int().positive().default(2),
   retentionDays: z.number().int().positive().default(30),
   claudeConfigDir: z.string().default("~/.claude"),

@@ -83,4 +83,11 @@ describe("settings", () => {
     expect(s.showDismissed).toBe(true);
     expect(s.showClosed).toBe(true);
   });
+
+  it("defaults queueSort to activity/desc and round-trips a non-default", () => {
+    expect(DEFAULT_SETTINGS.queueSort).toEqual({ key: "activity", dir: "desc" });
+    const dir = mkdtempSync(join(tmpdir(), "pa-"));
+    saveSettings(dir, { ...DEFAULT_SETTINGS, queueSort: { key: "repo", dir: "asc" } });
+    expect(loadSettings(dir).queueSort).toEqual({ key: "repo", dir: "asc" });
+  });
 });
