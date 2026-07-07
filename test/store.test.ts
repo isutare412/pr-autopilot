@@ -7,7 +7,7 @@ import type { PrRecord } from "../src/main/core/schema";
 
 function rec(over: Partial<PrRecord> = {}): PrRecord {
   return {
-    key: "git.linecorp.com/O/R#65", host: "git.linecorp.com", owner: "O", repo: "R",
+    key: "github.com/O/R#65", host: "github.com", owner: "O", repo: "R",
     number: 65, url: "http://x", title: "t", author: "a", baseRef: "develop",
     state: "NEEDS_REVIEW", mode: "first-review", headSha: "abc", draftVersion: 1,
     draft: { overallEn: "o", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] },
@@ -21,18 +21,18 @@ describe("Store", () => {
   it("put then get round-trips", () => {
     const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
     s.put(rec());
-    expect(s.get("git.linecorp.com/O/R#65")?.title).toBe("t");
+    expect(s.get("github.com/O/R#65")?.title).toBe("t");
   });
 
   it("get returns null for unknown key", () => {
     const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
-    expect(s.get("git.linecorp.com/O/R#999")).toBeNull();
+    expect(s.get("github.com/O/R#999")).toBeNull();
   });
 
   it("list returns all records", () => {
     const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
     s.put(rec());
-    s.put(rec({ key: "git.linecorp.com/O/R#66", number: 66 }));
+    s.put(rec({ key: "github.com/O/R#66", number: 66 }));
     expect(s.list().length).toBe(2);
   });
 
@@ -40,7 +40,7 @@ describe("Store", () => {
     const dir = mkdtempSync(join(tmpdir(), "store-"));
     const s = new Store(dir);
     s.put(rec({ draftVersion: 3 }));
-    s.snapshot(s.get("git.linecorp.com/O/R#65")!);
+    s.snapshot(s.get("github.com/O/R#65")!);
     const snaps = readdirSync(join(dir, "snapshots"));
     expect(snaps.some((f) => f.includes("__65.v3"))).toBe(true);
   });
@@ -48,11 +48,11 @@ describe("Store", () => {
   it("prune removes terminal records older than retention", () => {
     const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
     s.put(rec({ state: "DONE", doneAt: "2026-01-01T00:00:00Z" }));
-    s.put(rec({ key: "git.linecorp.com/O/R#66", number: 66, state: "NEEDS_REVIEW", doneAt: null }));
+    s.put(rec({ key: "github.com/O/R#66", number: 66, state: "NEEDS_REVIEW", doneAt: null }));
     const pruned = s.prune(30, "2026-03-01T00:00:00Z");
-    expect(pruned).toEqual(["git.linecorp.com/O/R#65"]);
-    expect(s.get("git.linecorp.com/O/R#65")).toBeNull();
-    expect(s.get("git.linecorp.com/O/R#66")).not.toBeNull();
+    expect(pruned).toEqual(["github.com/O/R#65"]);
+    expect(s.get("github.com/O/R#65")).toBeNull();
+    expect(s.get("github.com/O/R#66")).not.toBeNull();
   });
 
   it("withLock serializes async work per key", async () => {
@@ -81,18 +81,18 @@ describe("Store", () => {
 
   it("prune removes dismissed and POSTED_AWAITING_AUTHOR records too", () => {
     const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
-    s.put(rec({ key: "git.linecorp.com/O/R#70", number: 70, state: "DONE", dismissed: true, doneAt: "2026-01-01T00:00:00Z" }));
-    s.put(rec({ key: "git.linecorp.com/O/R#71", number: 71, state: "POSTED_AWAITING_AUTHOR", doneAt: null, updatedAt: "2026-01-01T00:00:00Z" }));
+    s.put(rec({ key: "github.com/O/R#70", number: 70, state: "DONE", dismissed: true, doneAt: "2026-01-01T00:00:00Z" }));
+    s.put(rec({ key: "github.com/O/R#71", number: 71, state: "POSTED_AWAITING_AUTHOR", doneAt: null, updatedAt: "2026-01-01T00:00:00Z" }));
     const pruned = s.prune(30, "2026-03-01T00:00:00Z").sort();
-    expect(pruned).toEqual(["git.linecorp.com/O/R#70", "git.linecorp.com/O/R#71"]);
+    expect(pruned).toEqual(["github.com/O/R#70", "github.com/O/R#71"]);
   });
 
   it("migrates a legacy DISMISSED record to the dismissed flag, recovering state from dismissedFrom", () => {
     const dir = mkdtempSync(join(tmpdir(), "store-"));
     const s = new Store(dir);
-    const legacy = { ...rec({ key: "git.linecorp.com/O/R#80", number: 80 }), state: "DISMISSED", dismissedFrom: "DONE" };
-    writeFileSync(join(dir, "prs", "git.linecorp.com__O__R__80.json"), JSON.stringify(legacy));
-    const out = s.get("git.linecorp.com/O/R#80")!;
+    const legacy = { ...rec({ key: "github.com/O/R#80", number: 80 }), state: "DISMISSED", dismissedFrom: "DONE" };
+    writeFileSync(join(dir, "prs", "github.com__O__R__80.json"), JSON.stringify(legacy));
+    const out = s.get("github.com/O/R#80")!;
     expect(out.state).toBe("DONE");
     expect(out.dismissed).toBe(true);
   });
@@ -100,51 +100,51 @@ describe("Store", () => {
   it("migrates a legacy DISMISSED record without dismissedFrom by inferring state", () => {
     const dir = mkdtempSync(join(tmpdir(), "store-"));
     const s = new Store(dir);
-    const legacy = { ...rec({ key: "git.linecorp.com/O/R#81", number: 81 }), state: "DISMISSED",
+    const legacy = { ...rec({ key: "github.com/O/R#81", number: 81 }), state: "DISMISSED",
       postResult: { reviewUrl: "u", postedAt: "t", resolvedThreadIds: [] } };
     delete (legacy as Record<string, unknown>).dismissedFrom;
-    writeFileSync(join(dir, "prs", "git.linecorp.com__O__R__81.json"), JSON.stringify(legacy));
-    const out = s.get("git.linecorp.com/O/R#81")!;
+    writeFileSync(join(dir, "prs", "github.com__O__R__81.json"), JSON.stringify(legacy));
+    const out = s.get("github.com/O/R#81")!;
     expect(out.state).toBe("POSTED_AWAITING_AUTHOR");
     expect(out.dismissed).toBe(true);
   });
 
   it("prune removes an old ERROR record (falls back to updatedAt; doneAt null)", () => {
     const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
-    s.put(rec({ key: "git.linecorp.com/O/R#72", number: 72, state: "ERROR", doneAt: null, updatedAt: "2026-01-01T00:00:00Z" }));
+    s.put(rec({ key: "github.com/O/R#72", number: 72, state: "ERROR", doneAt: null, updatedAt: "2026-01-01T00:00:00Z" }));
     const pruned = s.prune(30, "2026-03-01T00:00:00Z");
-    expect(pruned).toEqual(["git.linecorp.com/O/R#72"]);
-    expect(s.get("git.linecorp.com/O/R#72")).toBeNull();
+    expect(pruned).toEqual(["github.com/O/R#72"]);
+    expect(s.get("github.com/O/R#72")).toBeNull();
   });
 
   it("prune removes an old CLOSED record (falls back to updatedAt; doneAt null)", () => {
     const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
-    s.put(rec({ key: "git.linecorp.com/O/R#74", number: 74, state: "CLOSED", doneAt: null, updatedAt: "2026-01-01T00:00:00Z" }));
+    s.put(rec({ key: "github.com/O/R#74", number: 74, state: "CLOSED", doneAt: null, updatedAt: "2026-01-01T00:00:00Z" }));
     const pruned = s.prune(30, "2026-03-01T00:00:00Z");
-    expect(pruned).toEqual(["git.linecorp.com/O/R#74"]);
-    expect(s.get("git.linecorp.com/O/R#74")).toBeNull();
+    expect(pruned).toEqual(["github.com/O/R#74"]);
+    expect(s.get("github.com/O/R#74")).toBeNull();
   });
 
   it("prune removes an old dismissed record even with a non-terminal state", () => {
     const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
-    s.put(rec({ key: "git.linecorp.com/O/R#73", number: 73, state: "NEEDS_REVIEW", dismissed: true, doneAt: null, updatedAt: "2026-01-01T00:00:00Z" }));
+    s.put(rec({ key: "github.com/O/R#73", number: 73, state: "NEEDS_REVIEW", dismissed: true, doneAt: null, updatedAt: "2026-01-01T00:00:00Z" }));
     const pruned = s.prune(30, "2026-03-01T00:00:00Z");
-    expect(pruned).toEqual(["git.linecorp.com/O/R#73"]);
-    expect(s.get("git.linecorp.com/O/R#73")).toBeNull();
+    expect(pruned).toEqual(["github.com/O/R#73"]);
+    expect(s.get("github.com/O/R#73")).toBeNull();
   });
 
   it("delete removes the record file and updates the index", () => {
     const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
     s.put(rec());
-    s.put(rec({ key: "git.linecorp.com/O/R#66", number: 66 }));
-    s.delete("git.linecorp.com/O/R#65");
-    expect(s.get("git.linecorp.com/O/R#65")).toBeNull();
+    s.put(rec({ key: "github.com/O/R#66", number: 66 }));
+    s.delete("github.com/O/R#65");
+    expect(s.get("github.com/O/R#65")).toBeNull();
     expect(s.list().map((r) => r.number)).toEqual([66]);
   });
 
   it("delete is a no-op for an unknown key", () => {
     const s = new Store(mkdtempSync(join(tmpdir(), "store-")));
-    expect(() => s.delete("git.linecorp.com/O/R#999")).not.toThrow();
+    expect(() => s.delete("github.com/O/R#999")).not.toThrow();
   });
 
   it("withLock keeps the map entry while a later caller is still queued", async () => {

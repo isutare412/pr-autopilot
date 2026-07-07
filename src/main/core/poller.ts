@@ -57,7 +57,7 @@ export function decideWork(args: {
 }): WorkItem[] {
   const allow = args.repoAllow ?? [];
   const deny = args.repoDeny ?? [];
-  const host = args.host ?? "git.linecorp.com";
+  const host = args.host ?? "github.com";
   const work: WorkItem[] = [];
   for (const pr of args.queue) {
     if (!repoAllowed(pr.owner, pr.repo, allow, deny)) continue;

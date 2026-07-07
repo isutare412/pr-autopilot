@@ -9,65 +9,35 @@ mechanisms work.
 
 ## Repository layout
 
+A directory-level map (not every file — browse the tree for specifics):
+
 ```
 src/
   main/           Electron main process
-    core/         Framework-free backend modules (no Electron imports allowed)
-      api.ts      gh API wrappers (read-only: fetch PR data, threads, diffs)
-      executor.ts posts approved findings to GitHub via IPC-injected gh args
-      generator.ts launches the Claude Code subprocess with --plugin-dir
-      gh.ts       gh subprocess helpers
-      guard.ts    isMutatingGh() — the authoritative mutation classifier
-      orchestrator.ts drives the per-PR lifecycle state machine
-      poller.ts   polls GitHub for review-requested PRs
-      prompt.ts   builds the claude invocation arguments
-      queue.ts    bounded async queue
-      schema.ts   shared Zod schemas (Language, Priority, PrState, Finding, …)
-      store.ts    persistent PR state (userData dir)
-    index.ts      Electron app entry
-    ipc.ts        IPC handlers bridging main ↔ renderer
-    lifecycle.ts  app-level lifecycle (ready, before-quit)
-    menu.ts       tray context menu
-    notify-electron.ts  macOS notification wrapper
-    paths.ts      userData / resource paths (Electron-aware)
-    paths-pure.ts platform-path helpers (Electron-free, testable)
-    settings.ts   Settings schema + load/save
-    tray.ts       Tray construction and update
-    windows.ts    BrowserWindow management
-  preload/
-    index.ts      contextBridge — exposes typed IPC to the renderer
-  renderer/
-    index.html        main window shell
-    preferences.html  preferences window shell
-    src/
-      App.tsx          main review/queue view
-      preferences.tsx  preferences form mount
-      api.ts           typed IPC calls from renderer
-      types.ts         renderer-side types
-      settings.ts      renderer settings helpers
-      components/      React components (ActionsBar, Detail, FindingCard, …)
+    core/         Framework-free backend (NO Electron imports) — pure, unit-tested
+                  logic. Key modules: api.ts (read-only gh API), executor.ts
+                  (posts approved findings), generator.ts (launches the claude
+                  subprocess), guard.ts (isMutatingGh mutation classifier),
+                  orchestrator.ts (per-PR state machine), poller.ts, prompt.ts,
+                  queue.ts, schema.ts (shared Zod types), store.ts (persistent
+                  state), plus queueSort.ts / visibility.ts (mirrored in the
+                  renderer — see "Core ↔ renderer parity").
+    *.ts          Electron glue: index.ts (app entry), ipc.ts, lifecycle.ts,
+                  tray.ts, menu.ts, windows.ts, notify-electron.ts, paths.ts /
+                  paths-pure.ts, and settings.ts (the observable SettingsStore).
+  preload/index.ts   contextBridge — exposes typed IPC to the renderer.
+  renderer/       React UI — App.tsx (review/queue view), preferences, and
+                  components/ (ActionsBar, Detail, FindingCard, PrefsForm, …).
 
-plugin/
-  .claude-plugin/
-    plugin.json        plugin manifest (name: pr-autopilot, version: 0.1.0)
-  skills/
-    review-pr/
-      SKILL.md         the always-on review entry point
-      references/      checkout.md, posting.md, verify.md — reference docs
-
-build/
-  bin/
-    gh               read-only gh shim (prepended to PATH during generation)
-    guard.mjs        parity copy of src/main/core/guard.ts :: isMutatingGh
-    guard.d.mts      type declarations for guard.mjs
-  guard.settings.json  Claude Code settings injected for the generation subprocess
-  entitlements.mac.plist
-  icon-master.png        app-icon source art (full-bleed steering wheel)
-  icon.png               macOS app icon — 1024² superellipse RGBA (regen: `make icons`)
-  trayTemplate.svg       menu-bar glyph source (style-A wheel)
-  trayTemplate.png       menu-bar template 18×18 (+ trayTemplate@2x.png 36×36) (regen: `make icons`)
-
-test/                  vitest test suite (mirrors src/main/core/ + renderer)
+plugin/           The bundled Claude Code plugin (see "The plugin" below).
+build/            Packaging assets: build/bin/ (the read-only gh shim + guard.mjs
+                  parity copy), guard.settings.json, entitlements, the app icon,
+                  and the menu-bar tray icons — one template per operating-mode
+                  state (default / disabled / automated / needs-review, each
+                  @1x/@2x + .svg). Regenerate icons with `make icons`.
+scripts/          Build helpers (e.g. make-icons.sh, wrapped by `make icons`).
+test/             vitest suite, mirrors src/main/core/ + renderer.
+docs/             Design notes and plans — gitignored, not shipped.
 ```
 
 ---
@@ -158,6 +128,25 @@ Tests use vitest. When adding or changing a module in `core/`, write or update t
 corresponding test file in `test/`. Renderer component tests live in
 `test/renderer/`.
 
+### Settings, operating modes, and review effort
+
+`src/main/settings.ts` exposes an observable **`SettingsStore`** as the single
+source of truth: `get()` returns the current snapshot, `update(patch)` validates
++ persists + notifies subscribers, and `subscribe(fn)` reacts to changes. It
+persists **before** committing in memory, so a failed disk write leaves state
+unchanged. Settings apply live — only changing the **GitHub host** requires a
+restart.
+
+Two settings shape each run:
+
+- **Operating mode** — `disabled` / `supervised` (default) / `automated`, set
+  from the menu-bar icon or the main window. `disabled` pauses polling entirely;
+  `supervised` drafts reviews and waits for your approval before posting;
+  `automated` posts approved-shaped reviews on its own (first switch to it
+  requires an explicit confirmation). The mode also drives the tray icon state.
+- **Review effort** — `low` → `max`, passed to the generation subprocess as
+  `--effort` (default `high`).
+
 ### The read-only generation guard
 
 During the `claude` subprocess that runs the review skill, the app must not allow
@@ -185,6 +174,15 @@ implemented as three cooperating pieces:
 kept in sync with `src/main/core/guard.ts`. The test file `test/guard-shim.test.ts`
 enforces parity between the two. When you change the guard logic in `guard.ts`,
 update `guard.mjs` and verify `make test` passes.
+
+### Core ↔ renderer parity
+
+Two pure helpers are duplicated so both processes can use them without crossing
+the IPC boundary: `queueSort.ts` (queue ordering) and `visibility.ts` (which PRs
+are shown) each live in **both** `src/main/core/` and `src/renderer/src/`. Keep
+the copies behavior-identical — `test/queueSort-parity.test.ts` pins the two
+`sortRows` implementations together, the same idea as the guard parity rule
+above. Edit both sides in the same change.
 
 ### UI work: use the `frontend-design` skill
 

@@ -29,7 +29,7 @@ function mkOrch() {
     login: "me",
     retentionDays: () => 30,
     concurrency: 2,
-    host: "git.linecorp.com",
+    host: "github.com",
     language: () => "en",
     effort: () => "high",
     operatingMode: () => "supervised",
@@ -38,9 +38,9 @@ function mkOrch() {
 }
 
 function seed(store: Store, number: number, state: PrRecord["state"], over: Partial<PrRecord> = {}): string {
-  const key = `git.linecorp.com/O/R#${number}`;
+  const key = `github.com/O/R#${number}`;
   store.put({
-    key, host: "git.linecorp.com", owner: "O", repo: "R", number,
+    key, host: "github.com", owner: "O", repo: "R", number,
     url: "http://x/O/R/pull/" + number, title: "t", author: "kim", baseRef: "develop",
     state, mode: "first-review", headSha: "SHA1", draftVersion: 0, draft: null,
     feedbackHistory: [], postResult: null, postProgress: null, error: null,
@@ -52,9 +52,9 @@ function seed(store: Store, number: number, state: PrRecord["state"], over: Part
 describe("Orchestrator", () => {
   it("runGeneration writes a NEEDS_REVIEW record with the draft", async () => {
     const { orch, store } = mkOrch();
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
+    await orch.runGeneration("github.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
-    const rec = store.get("git.linecorp.com/O/R#65")!;
+    const rec = store.get("github.com/O/R#65")!;
     expect(rec.state).toBe("NEEDS_REVIEW");
     expect(rec.draft).not.toBeNull();
     expect(rec.draftVersion).toBe(1);
@@ -104,17 +104,17 @@ describe("Orchestrator", () => {
   it("runGeneration records ERROR when generate throws", async () => {
     const { orch, store } = mkOrch();
     (orch as any).generate = async () => { throw new Error("boom"); };
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
+    await orch.runGeneration("github.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
-    expect(store.get("git.linecorp.com/O/R#65")!.state).toBe("ERROR");
+    expect(store.get("github.com/O/R#65")!.state).toBe("ERROR");
   });
 
   it("poll/generation cycle never posts", async () => {
     const { orch, store } = mkOrch();
     const gh = (orch as any).d.gh;
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
+    await orch.runGeneration("github.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
-    const rec = store.get("git.linecorp.com/O/R#65")!;
+    const rec = store.get("github.com/O/R#65")!;
     expect(rec.state).toBe("NEEDS_REVIEW");
     expect(gh.postReview).not.toHaveBeenCalled();
     expect(gh.requestReviewer).not.toHaveBeenCalled();
@@ -134,12 +134,12 @@ describe("Orchestrator", () => {
       login: "me",
       retentionDays: () => 30,
       concurrency: 2,
-      host: "git.linecorp.com",
+      host: "github.com",
       language: () => "en",
       effort: () => "max",
       operatingMode: () => "supervised",
     });
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
+    await orch.runGeneration("github.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
     expect(capturedInput.language).toBe("en");
     expect(capturedInput.effort).toBe("max");
@@ -150,10 +150,10 @@ describe("Orchestrator", () => {
     let captured: string[] | undefined;
     orch.generate = vi.fn(async (_input, onActivity) => {
       onActivity?.(Array.from({ length: 20 }, (_, i) => `step ${i}`));
-      captured = store.get("git.linecorp.com/O/R#65")?.genActivity;
+      captured = store.get("github.com/O/R#65")?.genActivity;
       return draft;
     });
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
+    await orch.runGeneration("github.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
     expect(captured).toHaveLength(20);
     expect(captured?.[0]).toBe("step 0");
@@ -165,10 +165,10 @@ describe("Orchestrator", () => {
     let captured: string[] | undefined;
     orch.generate = vi.fn(async (_input, onActivity) => {
       onActivity?.(Array.from({ length: 600 }, (_, i) => `step ${i}`));
-      captured = store.get("git.linecorp.com/O/R#65")?.genActivity;
+      captured = store.get("github.com/O/R#65")?.genActivity;
       return draft;
     });
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
+    await orch.runGeneration("github.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
     expect(captured).toHaveLength(500);
     expect(captured?.[0]).toBe("step 100"); // last 500 of 600 begins at index 100
@@ -280,13 +280,13 @@ describe("Orchestrator — automated mode", () => {
     (orch as any).enqueuePost = postSpy;
     const notifier = (orch as any).d.notifier;
 
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
+    await orch.runGeneration("github.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
 
-    const rec = store.get("git.linecorp.com/O/R#65")!;
+    const rec = store.get("github.com/O/R#65")!;
     expect(rec.draft).not.toBeNull();
     expect(rec.state).toBe("POSTING");
-    expect(postSpy).toHaveBeenCalledWith("git.linecorp.com/O/R#65", true);
+    expect(postSpy).toHaveBeenCalledWith("github.com/O/R#65", true);
     expect(notifier.send).not.toHaveBeenCalled();
   });
 
@@ -296,10 +296,10 @@ describe("Orchestrator — automated mode", () => {
     (orch as any).enqueuePost = postSpy;
     const notifier = (orch as any).d.notifier;
 
-    await orch.runGeneration("git.linecorp.com/O/R#65", "first-review",
+    await orch.runGeneration("github.com/O/R#65", "first-review",
       { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" });
 
-    expect(store.get("git.linecorp.com/O/R#65")!.state).toBe("NEEDS_REVIEW");
+    expect(store.get("github.com/O/R#65")!.state).toBe("NEEDS_REVIEW");
     expect(postSpy).not.toHaveBeenCalled();
     expect(notifier.send).toHaveBeenCalledTimes(1);
   });

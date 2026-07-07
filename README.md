@@ -49,8 +49,36 @@ Open **Preferences** from the menu-bar icon or press `Cmd+,`. Set:
 |---|---|
 | **GitHub host** | The hostname of your GitHub instance (default: `github.com`). Use your enterprise hostname if applicable. |
 | **Comment language** | Language for comments posted to PRs — **English**, **Korean**, or **Japanese**. |
+| **Review effort** | Reasoning effort for each review, **Low** → **Max** (default: **High**). Higher is more thorough but slower. |
+| **Poll every (seconds)** | How often to check GitHub for review-requested PRs (default: `600`). |
+| **Review concurrency** | How many reviews may generate at once (default: `2`). |
+| **Retain reviews (days)** | How long finished reviews are kept before cleanup (default: `30`). |
 | **Claude config dir** | Path to your Claude config directory (default: `~/.claude`). Used only for authentication — the app does not write to it. |
+| **Claude path** | Full path to the `claude` binary. Leave empty to auto-detect from `PATH`. |
+| **Send notifications** | Post a macOS notification when a review needs your attention (default: on). |
 | **Launch at login** | Start PR Autopilot automatically when you log in (default: on). |
+
+All settings apply immediately — only changing the **GitHub host** takes effect
+after the app restarts.
+
+---
+
+## How reviews run: operating modes
+
+PR Autopilot has three operating modes, switched from the menu-bar icon (the tray
+icon changes to reflect the current one):
+
+| Mode | Behavior |
+|---|---|
+| **Disabled** | Polling is paused — no PRs are fetched and no reviews are generated. |
+| **Supervised** *(default)* | Review-requested PRs are fetched and reviewed automatically, but nothing is posted. Each draft waits in the review window for you to refine and approve, and the tray icon marks when a review needs your attention. |
+| **Automated** | Reviews are generated and posted without waiting for approval. Switching into this mode the first time asks for an explicit confirmation. |
+
+Regardless of mode, the review-generation subprocess is **read-only** against
+GitHub — it can never post, merge, or otherwise mutate a PR. Posting happens only
+from the app itself, after your approval (Supervised) or automatically
+(Automated). See the guard mechanism in [AGENTS.md](AGENTS.md) for how that is
+enforced.
 
 ---
 

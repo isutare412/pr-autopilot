@@ -29,15 +29,15 @@ describe("GeneratedDraft", () => {
 
 describe("keys", () => {
   it("builds prKey and fileKey", () => {
-    expect(prKey("git.linecorp.com", "O", "R", 65)).toBe("git.linecorp.com/O/R#65");
-    expect(fileKey("git.linecorp.com", "O", "R", 65)).toBe("git.linecorp.com__O__R__65");
+    expect(prKey("github.com", "O", "R", 65)).toBe("github.com/O/R#65");
+    expect(fileKey("github.com", "O", "R", 65)).toBe("github.com__O__R__65");
   });
 });
 
 describe("PrRecord", () => {
   it("validates a minimal record", () => {
     const rec = PrRecord.parse({
-      key: "git.linecorp.com/O/R#65", host: "git.linecorp.com",
+      key: "github.com/O/R#65", host: "github.com",
       owner: "O", repo: "R", number: 65, url: "http://x", title: "t",
       author: "a", baseRef: "develop", state: "DISCOVERED", mode: "first-review",
       headSha: "abc", draftVersion: 0, draft: null, feedbackHistory: [],

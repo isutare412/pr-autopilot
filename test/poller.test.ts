@@ -34,10 +34,10 @@ describe("authorAwaitingReview", () => {
 });
 
 const pr = (number: number): SearchPr => ({ url: `http://x/O/R/pull/${number}`, owner: "O", repo: "R", number, title: `t${number}` });
-const key = (n: number) => `git.linecorp.com/O/R#${n}`;
+const key = (n: number) => `github.com/O/R#${n}`;
 
 function existing(number: number, over: Partial<PrRecord>): [string, PrRecord] {
-  return [key(number), { key: key(number), host: "git.linecorp.com", owner: "O", repo: "R", number,
+  return [key(number), { key: key(number), host: "github.com", owner: "O", repo: "R", number,
     url: "x", title: "t", author: "a", baseRef: "develop", state: "NEEDS_REVIEW", mode: "first-review",
     headSha: "SHA1", draftVersion: 1, draft: null, feedbackHistory: [], postResult: null,
     postProgress: null, error: null, discoveredAt: "t", generatedAt: "t", updatedAt: "t", doneAt: null, ...over } as PrRecord];

@@ -5,7 +5,7 @@ import type { PrRecord } from "../src/main/core/schema";
 
 function baseRec(over: Partial<PrRecord> = {}): PrRecord {
   return {
-    key: "git.linecorp.com/O/R#65", host: "git.linecorp.com", owner: "O", repo: "R",
+    key: "github.com/O/R#65", host: "github.com", owner: "O", repo: "R",
     number: 65, url: "http://x", title: "t", author: "a", baseRef: "develop",
     state: "POSTING", mode: "first-review", headSha: "SHA1", draftVersion: 1,
     draft: { overallEn: "o", counts: { critical: 1, major: 0, minor: 0, nit: 1 },
@@ -34,7 +34,7 @@ function ghWith(headSha: string, state = "OPEN"): { gh: Gh; rec: Recorder } {
     if (args.some((a) => a.includes("/reviews"))) return JSON.stringify({ html_url: "http://x/r/1" });
     return "{}";
   });
-  return { gh: new Gh(rec, "git.linecorp.com"), rec };
+  return { gh: new Gh(rec, "github.com"), rec };
 }
 
 describe("buildReviewPayload", () => {

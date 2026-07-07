@@ -40,7 +40,7 @@ describe("isMutatingGh", () => {
   }
 
   const reads = [
-    ["api", "--hostname", "git.linecorp.com", "/user", "--jq", ".login"],
+    ["api", "--hostname", "github.com", "/user", "--jq", ".login"],
     ["pr", "view", "65", "--json", "title"],
     ["pr", "diff", "65"],
     ["api", "graphql", "-f", "query=query($o:String!){ repository {} }"],
