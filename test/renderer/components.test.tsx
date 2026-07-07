@@ -107,6 +107,33 @@ describe("RowActionsMenu", () => {
     fireEvent.mouseDown(document.body);
     expect(screen.queryByText("Hide from queue")).not.toBeInTheDocument();
   });
+
+  it("hides Approve anyway unless canForceApprove", () => {
+    render(<RowActionsMenu {...base} dismissed={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    expect(screen.queryByText("Approve anyway")).not.toBeInTheDocument();
+  });
+
+  it("shows Approve anyway when canForceApprove and requires the in-menu confirm", () => {
+    const onForceApprove = vi.fn();
+    render(<RowActionsMenu {...base} dismissed={false} canForceApprove onForceApprove={onForceApprove} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.click(screen.getByText("Approve anyway"));
+    expect(onForceApprove).not.toHaveBeenCalled();          // confirm first
+    expect(screen.getByText(/leaves open comments/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    expect(onForceApprove).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancel aborts the approve and returns to the menu", () => {
+    const onForceApprove = vi.fn();
+    render(<RowActionsMenu {...base} dismissed={false} canForceApprove onForceApprove={onForceApprove} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.click(screen.getByText("Approve anyway"));
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(onForceApprove).not.toHaveBeenCalled();
+    expect(screen.getByText("Approve anyway")).toBeInTheDocument();
+  });
 });
 
 describe("QueueFilter", () => {
