@@ -1,7 +1,7 @@
 import { Store } from "./store";
 import { JobQueue } from "./queue";
 import { Gh, SearchPr } from "./gh";
-import { execute } from "./executor";
+import { execute, forceApprove } from "./executor";
 import { decideWork, authorAwaitingReview, keysToProbe } from "./poller";
 import { PrRecord, Draft, Mode, Language, Effort, OperatingMode, prKey } from "./schema";
 
@@ -48,6 +48,10 @@ export class Orchestrator {
 
   enqueuePost = (key: string, auto = false) => {
     this.postQueue.submit(key, () => this.runPost(key, auto));
+  };
+
+  enqueueForceApprove = (key: string) => {
+    this.postQueue.submit(key, () => this.runForceApprove(key));
   };
 
   async runGeneration(key: string, mode: Mode, pr: SearchPr, feedback?: string): Promise<void> {
@@ -151,6 +155,21 @@ export class Orchestrator {
     });
   }
 
+  /** Give-up approval lane: post a bare LGTM and finish. No `!rec.draft` guard —
+   *  force-approve needs no draft (covers an ERROR with a failed generation). */
+  async runForceApprove(key: string): Promise<void> {
+    await this.store.withLock(key, async () => {
+      const rec = this.store.get(key);
+      if (!rec) return;
+      try {
+        this.store.put(await forceApprove(this.d.gh, rec, this.d.nowIso()));
+      } catch (e) {
+        this.store.put({ ...rec, state: "ERROR", forceApprove: false,
+          error: { step: "force-approve", message: String(e) }, updatedAt: this.d.nowIso() });
+      }
+    });
+  }
+
   async runPoll(): Promise<void> {
     const queue = await this.d.gh.searchReviewRequested(this.d.login);
     const existing = new Map(this.store.list().map((r) => [r.key, r]));
@@ -219,7 +238,10 @@ export class Orchestrator {
     const resumedPost: string[] = [];
     for (const rec of this.store.list()) {
       if (rec.state === "GENERATING") { this.enqueueGen(rec.key); regenerated.push(rec.key); }
-      else if (rec.state === "POSTING") { this.enqueuePost(rec.key); resumedPost.push(rec.key); }
+      else if (rec.state === "POSTING") {
+        (rec.forceApprove ? this.enqueueForceApprove : this.enqueuePost)(rec.key);
+        resumedPost.push(rec.key);
+      }
     }
     return { regenerated, resumedPost };
   }

@@ -207,6 +207,49 @@ describe("recoverInFlight", () => {
   });
 });
 
+describe("runForceApprove", () => {
+  it("posts LGTM and marks DONE, ignoring the prior post ledger", async () => {
+    const { orch, store } = mkOrch();
+    const key = seed(store, 50, "POSTING", { draft, draftVersion: 1, forceApprove: true,
+      postProgress: { repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: true } });
+    await orch.runForceApprove(key);
+    const rec = store.get(key)!;
+    expect(rec.state).toBe("DONE");
+    expect(rec.postResult?.reviewUrl).toBe("http://x/r/1");
+    expect(rec.forceApprove).toBe(false);
+  });
+
+  it("records ERROR with step force-approve when postReview throws", async () => {
+    const { orch, store } = mkOrch();
+    (orch as any).d.gh.postReview = vi.fn(async () => { throw new Error("boom"); });
+    const key = seed(store, 51, "POSTING", { draft, draftVersion: 1, forceApprove: true });
+    await orch.runForceApprove(key);
+    const rec = store.get(key)!;
+    expect(rec.state).toBe("ERROR");
+    expect(rec.error?.step).toBe("force-approve");
+    expect(rec.forceApprove).toBe(false);
+  });
+});
+
+describe("recoverInFlight — force-approve routing", () => {
+  it("routes a POSTING+forceApprove record to the force-approve lane, plain POSTING to normal post", () => {
+    const { orch, store } = mkOrch();
+    const plain = seed(store, 60, "POSTING");
+    const forced = seed(store, 61, "POSTING", { forceApprove: true });
+    const postSpy = vi.fn();
+    const faSpy = vi.fn();
+    (orch as any).enqueuePost = postSpy;
+    (orch as any).enqueueForceApprove = faSpy;
+
+    orch.recoverInFlight();
+
+    expect(postSpy).toHaveBeenCalledWith(plain);
+    expect(postSpy).not.toHaveBeenCalledWith(forced);
+    expect(faSpy).toHaveBeenCalledWith(forced);
+    expect(faSpy).not.toHaveBeenCalledWith(plain);
+  });
+});
+
 describe("Orchestrator — automated mode", () => {
   it("auto-posts a fresh draft and suppresses the Draft-ready notification", async () => {
     const { orch, store } = mkOrch();
