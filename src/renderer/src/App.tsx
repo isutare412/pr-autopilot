@@ -39,6 +39,12 @@ export function App() {
   // without re-binding whenever selectedKey state changes.
   const selectedKeyRef = useRef<string | null>(null);
 
+  // Ref so mount-bound closures (onRecordsChanged) read the current queue
+  // filters rather than mount-time defaults (getSettings loads persisted
+  // filters after mount).
+  const filtersRef = useRef({ showDone, showDismissed, showClosed });
+  filtersRef.current = { showDone, showDismissed, showClosed };
+
   async function loadList() {
     const result = await api.list();
     const items: UiRow[] = (result as { items: UiRow[] }).items ?? [];
@@ -51,7 +57,13 @@ export function App() {
     const r = await api.get(key);
     // IPC returns { error: string } (plain string) for not-found; real records have `state`
     if (!r || !("state" in (r as object))) return;
-    setRecord(r as UiRecord);
+    const rec = r as UiRecord;
+    // Never display a record that isn't in the visible queue — guards against
+    // the re-fetch resolving after the record has left the queue (e.g.
+    // approve -> DONE), which would otherwise resurrect a hidden record even
+    // after the passive clear effect already cleared the selection.
+    if (!isQueueVisible(rec, filtersRef.current)) { clearSelection(); return; }
+    setRecord(rec);
   }
 
   // Drop the detail-pane selection entirely (state + ref, kept in sync).

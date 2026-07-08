@@ -227,6 +227,53 @@ describe("App — queue filters", () => {
     await waitFor(() => expect(screen.getByText("Select a PR to review")).toBeInTheDocument());
     expect(screen.queryByText("View on GitHub")).not.toBeInTheDocument();
   });
+
+  it("clears the detail pane when the re-fetch resolves after loadList (real IPC ordering)", async () => {
+    // Same scenario as the previous test, but this time the re-fetch (api.get)
+    // is deferred so it resolves AFTER loadList's setRows — the real IPC
+    // ordering the previous test's early-resolving mock happens to miss.
+    api.getSettings.mockResolvedValue({
+      operatingMode: "supervised", pollIntervalSec: 600,
+      showDone: false, showDismissed: false, showClosed: false,
+      queueSort: { key: "activity", dir: "desc" },
+    });
+    let onRecords: (() => void) | undefined;
+    api.onRecordsChanged.mockImplementationOnce((cb: () => void) => {
+      onRecords = cb;
+      return () => {};
+    });
+    api.list.mockResolvedValue({ items: [
+      { key: "k1", number: 1, repo: "r", title: "Active row", state: "NEEDS_REVIEW", mode: "first-review", counts: null, updatedAt: "" },
+    ] as UiRow[] });
+    api.get.mockResolvedValue({
+      key: "k1", number: 1, title: "Active row", url: "http://x",
+      state: "NEEDS_REVIEW", draft: null, error: null,
+    } as any);
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("Active row")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Active row"));
+    await waitFor(() => expect(screen.getByText("View on GitHub")).toBeInTheDocument());
+
+    // The PR completes to DONE; its row leaves the queue. Defer api.get's
+    // resolution so the re-fetch lands strictly after loadList's setRows.
+    api.list.mockResolvedValue({ items: [
+      { key: "k1", number: 1, repo: "r", title: "Active row", state: "DONE", mode: "first-review", counts: null, updatedAt: "" },
+    ] as UiRow[] });
+    let resolveGet!: (v: unknown) => void;
+    api.get.mockReturnValueOnce(new Promise<unknown>((r) => { resolveGet = r; }) as any);
+
+    await act(async () => { onRecords?.(); });
+    await act(async () => {
+      resolveGet({
+        key: "k1", number: 1, title: "Active row", url: "http://x",
+        state: "DONE", draft: null, error: null,
+      });
+    });
+
+    expect(screen.getByText("Select a PR to review")).toBeInTheDocument();
+    expect(screen.queryByText("View on GitHub")).not.toBeInTheDocument();
+  });
 });
 
 describe("App — window title", () => {
