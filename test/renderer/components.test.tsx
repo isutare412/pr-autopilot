@@ -276,6 +276,17 @@ describe("ActionsBar", () => {
     expect(onFeedback).not.toHaveBeenCalled();
   });
 
+  it("disables Send until the textarea holds non-whitespace text", () => {
+    render(<ActionsBar {...props} state="NEEDS_REVIEW" />);
+    const ta = screen.getByPlaceholderText(/resolve V2/i);
+    const send = screen.getByRole("button", { name: /send/i });
+    expect(send).toBeDisabled();
+    fireEvent.change(ta, { target: { value: "   " } });
+    expect(send).toBeDisabled();
+    fireEvent.change(ta, { target: { value: "soften #1" } });
+    expect(send).toBeEnabled();
+  });
+
   it("labels the Post and Send buttons without trailing arrows", () => {
     const { rerender } = render(<ActionsBar {...props} state="NEEDS_REVIEW" />);
     expect(screen.getByRole("button", { name: "Post" })).toBeInTheDocument();

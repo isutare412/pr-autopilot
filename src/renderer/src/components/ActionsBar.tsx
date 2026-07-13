@@ -123,7 +123,7 @@ export function ActionsBar({ draft, state, dismissed, postVerdict, onApprove, on
             }
           }}
         />
-        <button id="send" onClick={handleSend}>
+        <button id="send" onClick={handleSend} disabled={!feedbackText.trim()}>
           Send
         </button>
       </div>

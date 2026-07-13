@@ -1361,8 +1361,14 @@ body {
   letter-spacing: 0.04em;
 }
 
-#send:hover {
+#send:hover:not(:disabled) {
   background: #0e1a1b;
+}
+
+#send:disabled {
+  color: var(--faint);
+  border-color: var(--line);
+  cursor: default;
 }
 
 /* ---- Scrollbars ---- */
