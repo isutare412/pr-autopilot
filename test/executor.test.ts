@@ -217,7 +217,10 @@ describe("execute", () => {
   it("resumes without re-posting the review when postProgress.reviewPosted is set", async () => {
     const { gh, rec } = ghWith("SHA1");
     const r = baseRec();
-    r.postProgress = { repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: false };
+    r.postProgress = {
+      repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: false,
+      pendingReviewId: null, threadsAdded: [], threadsFailed: [],
+    };
     r.postResult = { reviewUrl: "http://existing/r/1", postedAt: "t", resolvedThreadIds: [] };
     const out = await execute(gh, r, "me", "2026-06-29T00:00:00Z");
     expect(rec.calls.some((c) => c.args.some((a) => a.includes("/reviews")))).toBe(false);

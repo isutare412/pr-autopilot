@@ -68,7 +68,10 @@ export async function execute(
 
   const draft = rec.draft!;
   const verdict = rec.postVerdict ?? defaultVerdict(draft);
-  const progress = rec.postProgress ?? { repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false };
+  const progress = rec.postProgress ?? {
+    repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
+    pendingReviewId: null, threadsAdded: [], threadsFailed: [],
+  };
   const save = () => onProgress?.(progress);  // persist after each action → crash-safe resume
   const resolvedThreadIds: string[] = [...progress.threadsResolved.map((id) => draft.verify.find((v) => v.id === id)?.threadNodeId).filter(Boolean) as string[]];
 

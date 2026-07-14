@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { GeneratedDraft, PrRecord, prKey, fileKey, LANGUAGE_LABEL } from "../src/main/core/schema";
+import { GeneratedDraft, PrRecord, prKey, fileKey, LANGUAGE_LABEL, PostProgress } from "../src/main/core/schema";
 
 describe("GeneratedDraft", () => {
   it("applies defaults for user-only fields Claude omits", () => {
@@ -52,5 +52,26 @@ describe("PrRecord", () => {
 describe("Language labels", () => {
   it("maps codes to display names", () => {
     expect(LANGUAGE_LABEL).toEqual({ en: "English", ko: "Korean", ja: "Japanese" });
+  });
+});
+
+describe("PostProgress back-compat", () => {
+  it("parses a record persisted before the pending-review fields existed", () => {
+    const old = { repliesPosted: ["v1"], threadsResolved: [], reviewPosted: false, reviewerRequested: false };
+    const p = PostProgress.parse(old);
+    expect(p.pendingReviewId).toBeNull();
+    expect(p.threadsAdded).toEqual([]);
+    expect(p.threadsFailed).toEqual([]);
+    expect(p.repliesPosted).toEqual(["v1"]);
+  });
+
+  it("round-trips the new fields", () => {
+    const p = PostProgress.parse({
+      repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
+      pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: ["f2"],
+    });
+    expect(p.pendingReviewId).toBe("PRR_1");
+    expect(p.threadsAdded).toEqual(["f1"]);
+    expect(p.threadsFailed).toEqual(["f2"]);
   });
 });

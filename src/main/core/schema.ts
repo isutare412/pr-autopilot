@@ -104,6 +104,13 @@ export const PostProgress = z.object({
   threadsResolved: z.array(z.string()),     // verify item ids
   reviewPosted: z.boolean(),
   reviewerRequested: z.boolean(),
+  // The GraphQL pending review the findings are attached to, and which findings
+  // already made it in. Persisted after every mutation so a crash resumes into
+  // the same draft review instead of starting a second one (GitHub allows only
+  // one pending review per user per PR).
+  pendingReviewId: z.string().nullable().default(null),
+  threadsAdded: z.array(z.string()).default([]),    // finding ids that became threads
+  threadsFailed: z.array(z.string()).default([]),   // finding ids GitHub rejected → folded into the body
 });
 export type PostProgress = z.infer<typeof PostProgress>;
 

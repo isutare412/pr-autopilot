@@ -86,7 +86,10 @@ describe("Orchestrator", () => {
     // re-review draft, execute() would skip posting the new finding as "already done".
     const key = seed(store, 41, "POSTED_AWAITING_AUTHOR", {
       draft, draftVersion: 1, mode: "re-review",
-      postProgress: { repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: true },
+      postProgress: {
+        repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: true,
+        pendingReviewId: null, threadsAdded: [], threadsFailed: [],
+      },
       postResult: { reviewUrl: "http://x/r/first", postedAt: "t", resolvedThreadIds: [] },
       postVerdict: "comment",
     });
@@ -211,7 +214,10 @@ describe("runForceApprove", () => {
   it("posts LGTM and marks DONE, ignoring the prior post ledger", async () => {
     const { orch, store } = mkOrch();
     const key = seed(store, 50, "POSTING", { draft, draftVersion: 1, forceApprove: true,
-      postProgress: { repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: true } });
+      postProgress: {
+        repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: true,
+        pendingReviewId: null, threadsAdded: [], threadsFailed: [],
+      } });
     await orch.runForceApprove(key);
     const rec = store.get(key)!;
     expect(rec.state).toBe("DONE");
