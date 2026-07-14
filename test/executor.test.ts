@@ -419,8 +419,10 @@ describe("execute → pending-review flow", () => {
   });
 
   it("resume: skips findings already in threadsAdded", async () => {
-    // The fake reports PRR_1 as the live pending review, so execute() resumes into it
-    // rather than opening a second one (Task 7 makes that reconciliation explicit).
+    // progress.pendingReviewId is already set, so execute() short-circuits in
+    // openPendingReview() and reuses it directly — it does not call
+    // findPendingReview to re-discover the live pending review (that reconciliation
+    // arrives in a later task).
     const rec = new Recorder((args) => {
       const joined = args.join(" ");
       if (args.includes("state,headRefOid,id")) return JSON.stringify({ state: "OPEN", headRefOid: "SHA1", id: "PR_node1" });
@@ -439,6 +441,30 @@ describe("execute → pending-review flow", () => {
     expect(threadCalls(rec).length).toBe(0);                                    // f1 already in
     expect(rec.calls.some((c) => c.args.join(" ").includes("addPullRequestReview(input"))).toBe(false);
     expect(submitCall(rec)).toBeDefined();
+  });
+
+  it("resume: a partial resume adds only the missing finding, not the one already in threadsAdded", async () => {
+    // Two included findings, but only f1 made it in before the earlier crash.
+    // Re-adding f1 would duplicate the comment already on the PR — exactly the
+    // bug this progress ledger exists to prevent.
+    const { gh, rec } = ghWith("SHA1");
+    const r = baseRec();
+    r.draft!.findings = [
+      { id: "f1", ref: "#1", path: "a.go", line: 142, side: "RIGHT", startLine: null, startSide: null,
+        anchorable: true, priority: "Critical", body: "**[Critical]** leak", suggestion: null,
+        included: true, editedBody: null },
+      { id: "f2", ref: "#2", path: "b.go", line: 9, side: "RIGHT", startLine: null, startSide: null,
+        anchorable: true, priority: "Nit", body: "**[Nit]** name", suggestion: null,
+        included: true, editedBody: null },
+    ];
+    r.postProgress = {
+      repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
+      pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: [],
+    };
+    await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+    const threads = threadCalls(rec);
+    expect(threads.length).toBe(1);
+    expect(argValue(threads[0], "line")).toBe("9");   // f2's line — f1 was skipped
   });
 
   it("persists pendingReviewId and threadsAdded as it goes", async () => {
