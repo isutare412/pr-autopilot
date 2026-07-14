@@ -221,6 +221,22 @@ describe("FindingCard", () => {
     fireEvent.change(ta, { target: { value: "new" } });
     expect(onEdit).toHaveBeenCalledWith("#1", "new");
   });
+
+  it("marks an unanchorable finding as file-level", () => {
+    render(<FindingCard
+      f={{ ref: "#1", path: "a.go", line: 547, priority: "Nit", body: "b", editedBody: null,
+           included: true, anchorable: false }}
+      onToggle={vi.fn()} onEdit={vi.fn()} />);
+    expect(screen.getByText("file-level")).toBeTruthy();
+  });
+
+  it("does not mark an anchorable finding", () => {
+    render(<FindingCard
+      f={{ ref: "#1", path: "a.go", line: 460, priority: "Nit", body: "b", editedBody: null,
+           included: true, anchorable: true }}
+      onToggle={vi.fn()} onEdit={vi.fn()} />);
+    expect(screen.queryByText("file-level")).toBeNull();
+  });
 });
 
 describe("ActionsBar", () => {

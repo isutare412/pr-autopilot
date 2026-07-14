@@ -18,6 +18,14 @@ export function FindingCard({ f, onToggle, onEdit }: FindingCardProps) {
         <span className="tag">{f.ref}</span>
         <span className={`prio prio-${f.priority.toLowerCase()}`}>{f.priority}</span>
         <code>{f.path}:{f.line}</code>
+        {!f.anchorable && (
+          <span
+            className="chip-file"
+            title="This line is outside the diff, so GitHub can't anchor a comment to it. It will post as a file-level thread on this file."
+          >
+            file-level
+          </span>
+        )}
         <button
           className="toggle"
           data-ref={f.ref}
