@@ -352,6 +352,36 @@ describe("Orchestrator — automated mode", () => {
     expect(store.get(key)!.state).toBe("CLOSED");
     expect(notifier.send).not.toHaveBeenCalled();
   });
+
+  it("runPost ERROR path keeps the postProgress persisted by execute()'s onProgress, not the stale pre-execute snapshot", async () => {
+    const { orch, store } = mkOrch();
+    const draftWithFinding = {
+      overallEn: "o", counts: { critical: 1, major: 0, minor: 0, nit: 0 },
+      findings: [{ id: "f1", ref: "#1", path: "a.go", line: 10, side: "RIGHT", startLine: null,
+        startSide: null, anchorable: true, priority: "Critical", body: "**[Critical]** leak",
+        suggestion: null, included: true, editedBody: null }],
+      verify: [],
+    };
+    const key = seed(store, 23, "NEEDS_REVIEW", { draft: draftWithFinding as any });
+    const gh = (orch as any).d.gh;
+    // Progress this far: pending review opened and the one finding attached as a
+    // thread — both persisted via execute()'s onProgress before submitReview fails.
+    gh.prStatus = async () => ({ state: "OPEN", headSha: "SHA1", nodeId: "PR_node1" });
+    gh.createPendingReview = async () => "PRR_1";
+    gh.addReviewThread = async () => {};
+    gh.submitReview = async () => { throw new Error("submit boom"); };
+
+    await orch.runPost(key, false);
+
+    const rec = store.get(key)!;
+    expect(rec.state).toBe("ERROR");
+    expect(rec.error?.step).toBe("post");
+    // The bug: spreading the pre-execute `rec` snapshot instead of re-reading the
+    // store would wipe these back to the initial empty progress (null pendingReviewId,
+    // empty threadsAdded), losing track of the orphaned pending review.
+    expect(rec.postProgress?.pendingReviewId).toBe("PRR_1");
+    expect(rec.postProgress?.threadsAdded).toEqual(["f1"]);
+  });
 });
 
 describe("Orchestrator — poll sweep", () => {

@@ -161,7 +161,14 @@ export class Orchestrator {
         else if (auto && (updated.state === "DONE" || updated.state === "POSTED_AWAITING_AUTHOR"))
           await this.d.notifier.send("PR Autopilot", `Posted review: ${rec.repo} #${rec.number}`, rec.url);
       } catch (e) {
-        this.store.put({ ...rec, state: "ERROR", error: { step: "post", message: String(e) }, updatedAt: this.d.nowIso() });
+        // Re-read: execute()'s onProgress callback may have persisted postProgress
+        // (pendingReviewId, threadsAdded, threadsFailed, …) after `rec` was snapshotted
+        // above. Spreading the stale `rec` here would discard that progress and leave
+        // the app unaware of an already-created pending review (and pre-existing
+        // repliesPosted/threadsResolved), risking an orphaned review and duplicate
+        // replies on retry. Fall back to `rec` only if the record vanished entirely.
+        const cur = this.store.get(key) ?? rec;
+        this.store.put({ ...cur, state: "ERROR", error: { step: "post", message: String(e) }, updatedAt: this.d.nowIso() });
       }
     });
   }
