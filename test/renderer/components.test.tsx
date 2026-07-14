@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { QueueRow } from "../../src/renderer/src/components/QueueRow";
 import { FindingCard } from "../../src/renderer/src/components/FindingCard";
+import { VerifyCard } from "../../src/renderer/src/components/VerifyCard";
 import { ActionsBar, defaultVerdict as uiDefaultVerdict } from "../../src/renderer/src/components/ActionsBar";
 import { defaultVerdict as coreDefaultVerdict } from "../../src/main/core/executor";
 import { Detail } from "../../src/renderer/src/components/Detail";
@@ -261,6 +262,38 @@ describe("FindingCard", () => {
       onToggle={vi.fn()} onEdit={vi.fn()} />);
     expect(screen.getByRole("button", { name: /include/i })).toBeEnabled();
     expect(screen.getByRole("textbox")).not.toHaveAttribute("readonly");
+  });
+});
+
+describe("VerifyCard", () => {
+  const v = (over = {}) => ({
+    ref: "V1", verdict: "follow-up", included: true, path: "a.go", line: 1,
+    rationaleEn: "still open", replyBody: "orig reply", editedBody: null, ...over,
+  });
+
+  it("a locked card disables the toggle and makes the reply read-only", () => {
+    const onToggle = vi.fn();
+    const onEdit = vi.fn();
+    render(<VerifyCard v={v()} locked onToggle={onToggle} onEdit={onEdit} />);
+
+    const toggleBtn = screen.getByRole("button");
+    expect(toggleBtn).toBeDisabled();
+    fireEvent.click(toggleBtn);
+    expect(onToggle).not.toHaveBeenCalled();
+
+    const ta = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(ta).toHaveAttribute("readonly");
+    expect(ta.value).toBe("orig reply");
+  });
+
+  it("an unlocked card keeps the toggle enabled and the reply editable", () => {
+    const onEdit = vi.fn();
+    render(<VerifyCard v={v()} onToggle={vi.fn()} onEdit={onEdit} />);
+    expect(screen.getByRole("button")).toBeEnabled();
+    const ta = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(ta).not.toHaveAttribute("readonly");
+    fireEvent.change(ta, { target: { value: "new reply" } });
+    expect(onEdit).toHaveBeenCalledWith("V1", "new reply");
   });
 });
 

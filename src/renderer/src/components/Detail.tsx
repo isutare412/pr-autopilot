@@ -35,10 +35,15 @@ function mdLite(s: string): string {
 const DRAFT_LOCKED_MESSAGE =
   "Some findings are already attached to a draft review on GitHub. Retry the post to send the rest, or discard the draft review on GitHub.";
 
-/** True once part of the draft is already attached to a pending review on GitHub
- *  that hasn't been submitted yet. Mirrors api.ts's draftLocked. */
+/** True once some mutation from the current post cycle has actually landed on
+ *  GitHub — a reply posted, a thread resolved, or a finding attached to (or
+ *  folded into) a pending review — and that review hasn't been submitted yet.
+ *  Mirrors api.ts's draftLocked. */
 function draftLocked(record: UiRecord): boolean {
-  return !!record.postProgress?.pendingReviewId && !record.postProgress.reviewPosted;
+  const p = record.postProgress;
+  return !!p && !p.reviewPosted &&
+    (p.repliesPosted.length > 0 || p.threadsResolved.length > 0 ||
+     p.threadsAdded.length > 0 || p.threadsFailed.length > 0);
 }
 
 function LockedBanner() {
@@ -138,16 +143,16 @@ export function Detail({ record, onToggle, onEdit, onApprove, onForceApprove, on
         className="overall"
         dangerouslySetInnerHTML={{ __html: mdLite(draft.overallEn) }}
       />
+      {locked && <LockedBanner />}
       {draft.verify.length > 0 && (
         <>
           <h3>Verify</h3>
           {draft.verify.map((v) => (
-            <VerifyCard key={v.ref} v={v} onToggle={onToggle} onEdit={onEdit} />
+            <VerifyCard key={v.ref} v={v} locked={locked} onToggle={onToggle} onEdit={onEdit} />
           ))}
         </>
       )}
       <h3>New findings</h3>
-      {locked && <LockedBanner />}
       {draft.findings.map((f) => (
         <FindingCard key={f.ref} f={f} locked={locked} onToggle={onToggle} onEdit={onEdit} />
       ))}

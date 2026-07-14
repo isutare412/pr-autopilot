@@ -92,6 +92,53 @@ describe("api", () => {
     expect((api.editItem(deps, "github.com/O/R#65", "#1", "edited") as PrRecord).draft!.findings[0].editedBody).toBe("edited");
   });
 
+  it("draftLocked is true once a reply has posted, even with no pendingReviewId (FINDING I-2)", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    expect(draftLocked({ ...rec, postProgress: progress({ repliesPosted: ["v1"] }) })).toBe(true);
+  });
+
+  it("draftLocked is true once a thread has resolved, even with no pendingReviewId (FINDING I-2)", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    expect(draftLocked({ ...rec, postProgress: progress({ threadsResolved: ["v1"] }) })).toBe(true);
+  });
+
+  it("draftLocked is false when pendingReviewId is set but nothing has attached or failed yet (no over-locking)", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    expect(draftLocked({ ...rec, postProgress: progress({ pendingReviewId: "PRR_1" }) })).toBe(false);
+  });
+
+  it("toggleItem is rejected when only repliesPosted is non-empty (no pendingReviewId)", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    rec.postProgress = progress({ repliesPosted: ["v1"] });
+    deps.store.put(rec);
+    const out = api.toggleItem(deps, "github.com/O/R#65", "#1", false);
+    expect(out).toEqual({ error: DRAFT_LOCKED_MESSAGE });
+    expect(deps.store.get("github.com/O/R#65")!.draft!.findings[0].included).toBe(true);
+  });
+
+  it("editItem is rejected when only threadsResolved is non-empty (no pendingReviewId)", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    rec.postProgress = progress({ threadsResolved: ["v1"] });
+    deps.store.put(rec);
+    const out = api.editItem(deps, "github.com/O/R#65", "#1", "edited body");
+    expect(out).toEqual({ error: DRAFT_LOCKED_MESSAGE });
+    expect(deps.store.get("github.com/O/R#65")!.draft!.findings[0].editedBody).toBeNull();
+  });
+
+  it("toggleItem and editItem still allowed when pendingReviewId is set but nothing has landed yet", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    rec.postProgress = progress({ pendingReviewId: "PRR_1" });   // create succeeded, nothing attached/failed yet
+    deps.store.put(rec);
+    expect((api.toggleItem(deps, "github.com/O/R#65", "#1", false) as PrRecord).draft!.findings[0].included).toBe(false);
+    expect((api.editItem(deps, "github.com/O/R#65", "#1", "edited") as PrRecord).draft!.findings[0].editedBody).toBe("edited");
+  });
+
   it("toggleItem and editItem work again once the review has been submitted", () => {
     const { deps } = mkDeps();
     const rec = deps.store.get("github.com/O/R#65")!;

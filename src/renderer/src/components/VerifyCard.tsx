@@ -3,9 +3,16 @@ import { AutoTextarea } from "./AutoTextarea";
 
 interface VerifyCardProps {
   v: UiVerify;
+  /** True once the draft has a mutation already landed on GitHub for this post
+   *  cycle — toggling or editing now can't un-post what's already there.
+   *  Mirrors api.ts's draftLocked (same prop FindingCard takes). */
+  locked?: boolean;
   onToggle: (ref: string, included: boolean) => void;
   onEdit: (ref: string, value: string) => void;
 }
+
+const LOCKED_TITLE =
+  "Already landed on GitHub for this post — retry the post to send the rest, or discard the draft review on GitHub.";
 
 function mdLite(s: string): string {
   return s
@@ -14,7 +21,7 @@ function mdLite(s: string): string {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
-export function VerifyCard({ v, onToggle, onEdit }: VerifyCardProps) {
+export function VerifyCard({ v, locked, onToggle, onEdit }: VerifyCardProps) {
   const body = v.editedBody ?? v.replyBody ?? "";
   const toggle = v.included ? "☑" : "☐";
 
@@ -28,6 +35,8 @@ export function VerifyCard({ v, onToggle, onEdit }: VerifyCardProps) {
           className="toggle"
           data-ref={v.ref}
           data-included={String(v.included)}
+          disabled={locked}
+          title={locked ? LOCKED_TITLE : undefined}
           onClick={() => onToggle(v.ref, !v.included)}
         >
           {toggle}
@@ -41,6 +50,8 @@ export function VerifyCard({ v, onToggle, onEdit }: VerifyCardProps) {
         className="edit"
         data-ref={v.ref}
         value={body}
+        readOnly={locked}
+        title={locked ? LOCKED_TITLE : undefined}
         onChange={(e) => onEdit(v.ref, e.target.value)}
       />
     </div>

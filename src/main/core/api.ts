@@ -16,13 +16,28 @@ export const DRAFT_LOCKED_MESSAGE =
   "Some findings are already attached to a draft review on GitHub. Retry the post to send the rest, or discard the draft review on GitHub.";
 const LOCKED: Err = { error: DRAFT_LOCKED_MESSAGE };
 
-/** True once a post has attached at least one finding to a pending review on
- *  GitHub and hasn't submitted it yet. Dropping a finding or editing its body
- *  past this point cannot un-post what already landed — see executor.ts's
- *  DRAFT_CHANGED_AFTER_POST backstop for the mirror case where the draft changes
- *  by some other path (e.g. a re-draft from feedback). */
+/** True once some mutation from the current post cycle has actually landed on
+ *  GitHub — a reply posted, a thread resolved, or a finding attached to (or
+ *  permanently folded into) a pending review — and that review hasn't been
+ *  submitted yet. Editing or dropping an item past this point cannot un-post
+ *  what already landed, so toggleItem/editItem reject while this holds.
+ *
+ *  Deliberately narrower than "pendingReviewId is set": creating an empty
+ *  pending review attaches nothing, so on its own it shouldn't lock the draft —
+ *  only threadsAdded/threadsFailed becoming non-empty means a finding actually
+ *  reached (or was rejected by, then folded into) GitHub.
+ *
+ *  See executor.ts's DRAFT_CHANGED_AFTER_POST backstop for the mirror check on
+ *  the executor side, which catches a toggle/edit that slips past this lock.
+ *  That backstop does NOT cover a re-draft from feedback — runGeneration nulls
+ *  postProgress on every regeneration, so there's no stale id left for it to
+ *  catch there; a clean re-draft is instead caught by execute() asking GitHub
+ *  directly before taking its no-findings fast path. */
 export function draftLocked(rec: PrRecord): boolean {
-  return rec.postProgress?.pendingReviewId != null && !rec.postProgress.reviewPosted;
+  const p = rec.postProgress;
+  return p != null && !p.reviewPosted &&
+    (p.repliesPosted.length > 0 || p.threadsResolved.length > 0 ||
+     p.threadsAdded.length > 0 || p.threadsFailed.length > 0);
 }
 
 function findItem(rec: PrRecord, ref: string) {
