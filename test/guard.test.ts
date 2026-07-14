@@ -61,4 +61,16 @@ describe("isMutatingGh", () => {
   for (const args of reads) {
     it(`allows read: ${args.join(" ")}`, () => expect(isMutatingGh(args)).toBe(false));
   }
+
+  it("blocks the pending-review mutations the executor uses to post", () => {
+    const q = (body: string) => ["api", "--hostname", "github.com", "graphql", "-f", `query=${body}`];
+    expect(isMutatingGh(q("mutation($prId:ID!){ addPullRequestReview(input:{pullRequestId:$prId}){ pullRequestReview{ id } } }"))).toBe(true);
+    expect(isMutatingGh(q("mutation($rid:ID!){ addPullRequestReviewThread(input:{pullRequestReviewId:$rid}){ thread{ id } } }"))).toBe(true);
+    expect(isMutatingGh(q("mutation($rid:ID!){ submitPullRequestReview(input:{pullRequestReviewId:$rid}){ pullRequestReview{ url } } }"))).toBe(true);
+  });
+
+  it("still allows the read-only pending-review lookup", () => {
+    const query = "query($owner:String!){ repository(owner:$owner){ pullRequest(number:1){ reviews(first:1,states:PENDING){ nodes{ id } } } } }";
+    expect(isMutatingGh(["api", "--hostname", "github.com", "graphql", "-f", `query=${query}`])).toBe(false);
+  });
 });
