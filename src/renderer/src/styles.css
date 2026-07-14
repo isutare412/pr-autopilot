@@ -1404,6 +1404,11 @@ body {
   border-color: var(--accent);
 }
 
+.fb textarea:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
 #send {
   background: transparent;
   color: var(--accent);

@@ -105,6 +105,30 @@ describe("decideWork", () => {
     expect(work).toEqual([]);
   });
 
+  const postProgress = (over: Partial<PrRecord["postProgress"]> = {}) => ({
+    repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
+    pendingReviewId: null, threadsAdded: [], threadsFailed: [], ...over,
+  });
+
+  it("does not auto-regenerate an ERROR record whose postProgress ledger is non-empty, even when the head advances (FINDING I-2)", () => {
+    const work = decideWork({
+      queue: [pr(65)],
+      existing: new Map([existing(65, { state: "ERROR", headSha: "SHA1", postProgress: postProgress({ repliesPosted: ["v1"] }) })]),
+      liveHeads: new Map([[key(65), "SHA2"]]), authorRepliedKeys: new Set(),
+    });
+    expect(work).toEqual([]);
+  });
+
+  it("still auto-regenerates an ERROR record whose postProgress is null when the head advances", () => {
+    const work = decideWork({
+      queue: [pr(65)],
+      existing: new Map([existing(65, { state: "ERROR", headSha: "SHA1", postProgress: null })]),
+      liveHeads: new Map([[key(65), "SHA2"]]), authorRepliedKeys: new Set(),
+    });
+    expect(work.length).toBe(1);
+    expect(work[0].sha).toBe("SHA2");
+  });
+
   it("repoAllowed: empty allow = all, allow restricts, deny wins, owner/repo matches", () => {
     expect(repoAllowed("O", "R", [], [])).toBe(true);
     expect(repoAllowed("O", "R", ["R"], [])).toBe(true);

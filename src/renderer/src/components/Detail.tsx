@@ -35,14 +35,21 @@ function mdLite(s: string): string {
 const DRAFT_LOCKED_MESSAGE =
   "Some findings are already attached to a draft review on GitHub. Retry the post to send the rest, or discard the draft review on GitHub.";
 
-/** True once some mutation from the current post cycle has actually landed on
- *  GitHub — a reply posted, a thread resolved, or a finding attached to (or
- *  folded into) a pending review — and that review hasn't been submitted yet.
- *  Mirrors api.ts's draftLocked. */
-function draftLocked(record: UiRecord): boolean {
+/** True once a post is in flight or some mutation from the current post cycle
+ *  has actually landed on (or been opened against) GitHub — a reply posted, a
+ *  thread resolved, a pending review created, or a finding attached to (or
+ *  folded into) it — and that review hasn't been submitted yet. Mirrors
+ *  api.ts's draftLocked exactly — see that copy for the full rationale (kept
+ *  here as a separate literal, not imported, for the same reason as
+ *  DRAFT_LOCKED_MESSAGE above). test/draftLocked-parity.test.ts pins the two
+ *  copies together, the same way test/queueSort-parity.test.ts and
+ *  test/guard-shim.test.ts pin their own hand-synced pairs. */
+export function draftLocked(record: UiRecord): boolean {
+  if (record.state === "POSTING") return true;
   const p = record.postProgress;
   return !!p && !p.reviewPosted &&
-    (p.repliesPosted.length > 0 || p.threadsResolved.length > 0 ||
+    (p.pendingReviewId != null ||
+     p.repliesPosted.length > 0 || p.threadsResolved.length > 0 ||
      p.threadsAdded.length > 0 || p.threadsFailed.length > 0);
 }
 
@@ -162,6 +169,7 @@ export function Detail({ record, onToggle, onEdit, onApprove, onForceApprove, on
         state={record.state}
         dismissed={record.dismissed}
         postVerdict={record.postVerdict}
+        locked={locked}
         onApprove={onApprove}
         onForceApprove={onForceApprove}
         onDismiss={onDismiss}

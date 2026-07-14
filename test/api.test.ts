@@ -104,10 +104,20 @@ describe("api", () => {
     expect(draftLocked({ ...rec, postProgress: progress({ threadsResolved: ["v1"] }) })).toBe(true);
   });
 
-  it("draftLocked is false when pendingReviewId is set but nothing has attached or failed yet (no over-locking)", () => {
+  it("draftLocked is true once a pending review exists on GitHub, even with nothing attached or failed yet (FINDING C-1)", () => {
+    // A pending review that exists on GitHub is a real, persisted mutation —
+    // executor.ts saves pendingReviewId before the first addReviewThread call,
+    // so treating it as unlocked would open a live, persisted, UNLOCKED window
+    // for the full network round-trip between those two saves.
     const { deps } = mkDeps();
     const rec = deps.store.get("github.com/O/R#65")!;
-    expect(draftLocked({ ...rec, postProgress: progress({ pendingReviewId: "PRR_1" }) })).toBe(false);
+    expect(draftLocked({ ...rec, postProgress: progress({ pendingReviewId: "PRR_1" }) })).toBe(true);
+  });
+
+  it("draftLocked is true whenever a post is in flight (state === POSTING), even before postProgress exists (FINDING C-1)", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    expect(draftLocked({ ...rec, state: "POSTING", postProgress: null })).toBe(true);
   });
 
   it("toggleItem is rejected when only repliesPosted is non-empty (no pendingReviewId)", () => {
@@ -130,13 +140,28 @@ describe("api", () => {
     expect(deps.store.get("github.com/O/R#65")!.draft!.findings[0].editedBody).toBeNull();
   });
 
-  it("toggleItem and editItem still allowed when pendingReviewId is set but nothing has landed yet", () => {
-    const { deps } = mkDeps();
+  it("toggleItem, editItem, and submitFeedback are all rejected once a pending review exists on GitHub, even with nothing attached yet (FINDING C-1)", () => {
+    const { deps, gens } = mkDeps();
     const rec = deps.store.get("github.com/O/R#65")!;
     rec.postProgress = progress({ pendingReviewId: "PRR_1" });   // create succeeded, nothing attached/failed yet
     deps.store.put(rec);
-    expect((api.toggleItem(deps, "github.com/O/R#65", "#1", false) as PrRecord).draft!.findings[0].included).toBe(false);
-    expect((api.editItem(deps, "github.com/O/R#65", "#1", "edited") as PrRecord).draft!.findings[0].editedBody).toBe("edited");
+    expect(api.toggleItem(deps, "github.com/O/R#65", "#1", false)).toEqual({ error: DRAFT_LOCKED_MESSAGE });
+    expect(api.editItem(deps, "github.com/O/R#65", "#1", "edited")).toEqual({ error: DRAFT_LOCKED_MESSAGE });
+    expect(api.submitFeedback(deps, "github.com/O/R#65", "feedback")).toEqual({ error: DRAFT_LOCKED_MESSAGE });
+    expect(deps.store.get("github.com/O/R#65")!.draft!.findings[0].included).toBe(true);
+    expect(deps.store.get("github.com/O/R#65")!.draft!.findings[0].editedBody).toBeNull();
+    expect(gens).toEqual([]);
+  });
+
+  it("toggleItem, editItem, and submitFeedback are all rejected while state is POSTING (FINDING C-1)", () => {
+    const { deps, gens } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    rec.state = "POSTING";
+    deps.store.put(rec);
+    expect(api.toggleItem(deps, "github.com/O/R#65", "#1", false)).toEqual({ error: DRAFT_LOCKED_MESSAGE });
+    expect(api.editItem(deps, "github.com/O/R#65", "#1", "edited")).toEqual({ error: DRAFT_LOCKED_MESSAGE });
+    expect(api.submitFeedback(deps, "github.com/O/R#65", "feedback")).toEqual({ error: DRAFT_LOCKED_MESSAGE });
+    expect(gens).toEqual([]);
   });
 
   it("toggleItem and editItem work again once the review has been submitted", () => {
@@ -177,6 +202,30 @@ describe("api", () => {
     expect(gens).toEqual(["github.com/O/R#65"]);
     expect(deps.store.get("github.com/O/R#65")!.state).toBe("GENERATING");
     expect(deps.store.get("github.com/O/R#65")!.feedbackHistory[0].text).toBe("drop #1");
+  });
+
+  it("submitFeedback is rejected while the draft is locked, and leaves state/history untouched (FINDING I-2)", () => {
+    const { deps, gens } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    rec.postProgress = progress({ repliesPosted: ["v1"] });   // a reply already landed on GitHub
+    deps.store.put(rec);
+    const out = api.submitFeedback(deps, "github.com/O/R#65", "drop #1");
+    expect(out).toEqual({ error: DRAFT_LOCKED_MESSAGE });
+    expect(gens).toEqual([]);
+    const after = deps.store.get("github.com/O/R#65")!;
+    expect(after.state).toBe("NEEDS_REVIEW");
+    expect(after.feedbackHistory).toEqual([]);
+  });
+
+  it("submitFeedback is permitted again once the review has been submitted", () => {
+    const { deps, gens } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    rec.postProgress = progress({ pendingReviewId: "PRR_1", threadsAdded: ["f1"], reviewPosted: true });
+    deps.store.put(rec);
+    const out = api.submitFeedback(deps, "github.com/O/R#65", "one more pass");
+    expect(out).toEqual({ ok: true });
+    expect(gens).toEqual(["github.com/O/R#65"]);
+    expect(deps.store.get("github.com/O/R#65")!.state).toBe("GENERATING");
   });
 
   it("approve sets POSTING, records the verdict, and enqueues post", () => {

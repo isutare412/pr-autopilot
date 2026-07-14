@@ -361,6 +361,17 @@ describe("ActionsBar", () => {
     expect(send).toBeEnabled();
   });
 
+  it("disables Send and the feedback textarea when the draft is locked, even with text typed, and never fires onFeedback (FINDING I-2)", () => {
+    const onFeedback = vi.fn();
+    render(<ActionsBar {...props} onFeedback={onFeedback} state="ERROR" locked />);
+    const ta = screen.getByPlaceholderText(/resolve V2/i) as HTMLTextAreaElement;
+    const send = screen.getByRole("button", { name: /send/i });
+    expect(ta).toBeDisabled();
+    expect(send).toBeDisabled();
+    fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
+    expect(onFeedback).not.toHaveBeenCalled();
+  });
+
   it("labels the Post and Send buttons without trailing arrows", () => {
     const { rerender } = render(<ActionsBar {...props} state="NEEDS_REVIEW" />);
     expect(screen.getByRole("button", { name: "Post" })).toBeInTheDocument();
@@ -511,6 +522,47 @@ describe("Detail — locked draft (postProgress carries an unposted pending revi
       />,
     );
     expect(screen.getByRole("button", { name: /include/i })).toBeEnabled();
+  });
+
+  it("disables the toggle and the feedback Send control when a pending review exists with nothing attached yet (FINDING C-1)", () => {
+    render(
+      <Detail
+        record={findingsRec({ repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
+          pendingReviewId: "PRR_1", threadsAdded: [], threadsFailed: [] })}
+        onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop}
+        onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /include/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
+  });
+
+  it("disables the feedback Send control whenever the toggle is disabled (FINDING I-2)", () => {
+    render(
+      <Detail
+        record={findingsRec({ repliesPosted: ["v1"], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
+          pendingReviewId: null, threadsAdded: [], threadsFailed: [] })}
+        onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop}
+        onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
+  });
+
+  it("leaves the feedback Send control gated only by empty text once the review has been submitted", () => {
+    render(
+      <Detail
+        record={findingsRec({ repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: false,
+          pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: [] })}
+        onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop}
+        onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop}
+      />,
+    );
+    const ta = screen.getByPlaceholderText(/resolve V2/i);
+    const send = screen.getByRole("button", { name: /send/i });
+    expect(send).toBeDisabled();   // empty text, not locked
+    fireEvent.change(ta, { target: { value: "one more pass" } });
+    expect(send).toBeEnabled();
   });
 });
 

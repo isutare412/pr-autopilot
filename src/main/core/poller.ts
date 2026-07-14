@@ -68,6 +68,15 @@ export function decideWork(args: {
     if (!rec) { work.push({ key, mode: "first-review", sha, pr }); continue; }
     if (BUSY.has(rec.state)) continue;
     if (rec.dismissed) continue; // set aside by the user: never re-review while dismissed, even if the head advances
+    // An ERROR record whose postProgress still carries a ledger (replies posted,
+    // threads resolved/attached, or a pending review opened) must not be
+    // silently regenerated on a head advance: runGeneration nulls postProgress
+    // on every regeneration, and that ledger is the only thing preventing a
+    // resumed post from re-posting a reply to a thread that already has one.
+    // The user's own escapes (retry post, force-approve, or feedback once
+    // draftLocked permits it) remain available; only the unattended poll path
+    // is blocked here.
+    if (rec.state === "ERROR" && rec.postProgress != null) continue;
 
     const shaAdvanced = sha && sha !== rec.headSha;
     const authorReplied = args.authorRepliedKeys.has(key);

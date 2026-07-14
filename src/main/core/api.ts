@@ -16,16 +16,24 @@ export const DRAFT_LOCKED_MESSAGE =
   "Some findings are already attached to a draft review on GitHub. Retry the post to send the rest, or discard the draft review on GitHub.";
 const LOCKED: Err = { error: DRAFT_LOCKED_MESSAGE };
 
-/** True once some mutation from the current post cycle has actually landed on
- *  GitHub — a reply posted, a thread resolved, or a finding attached to (or
- *  permanently folded into) a pending review — and that review hasn't been
- *  submitted yet. Editing or dropping an item past this point cannot un-post
- *  what already landed, so toggleItem/editItem reject while this holds.
+/** True once a post is in flight or some mutation from the current post cycle
+ *  has actually landed on (or been opened against) GitHub — a reply posted, a
+ *  thread resolved, a pending review created, or a finding attached to (or
+ *  permanently folded into) it — and that review hasn't been submitted yet.
+ *  Editing or dropping an item past this point cannot un-post what already
+ *  landed, so toggleItem/editItem/submitFeedback reject while this holds.
  *
- *  Deliberately narrower than "pendingReviewId is set": creating an empty
- *  pending review attaches nothing, so on its own it shouldn't lock the draft —
- *  only threadsAdded/threadsFailed becoming non-empty means a finding actually
- *  reached (or was rejected by, then folded into) GitHub.
+ *  `pendingReviewId != null` locks on its own, even with nothing attached yet:
+ *  executor.ts persists that id *before* the first addReviewThread call, so the
+ *  window between those two saves is a real gap — a full network round-trip,
+ *  not a crash window — during which the review already exists on GitHub. A
+ *  user edit landing in that gap ships with the post's *old* captured body
+ *  while the UI shows the *new* one as posted (see executor.ts's backstop
+ *  comment for why body edits, unlike dropped ids, are invisible to it). The
+ *  `state === "POSTING"` check closes the narrower window before that: the
+ *  whole post is committed to landing once POSTING starts, even before
+ *  reconcilePendingReview's first save. Locking on a bare pending review is
+ *  correct conservatism, not over-locking — the review genuinely exists.
  *
  *  See executor.ts's DRAFT_CHANGED_AFTER_POST backstop for the mirror check on
  *  the executor side, which catches a toggle/edit that slips past this lock.
@@ -34,9 +42,11 @@ const LOCKED: Err = { error: DRAFT_LOCKED_MESSAGE };
  *  catch there; a clean re-draft is instead caught by execute() asking GitHub
  *  directly before taking its no-findings fast path. */
 export function draftLocked(rec: PrRecord): boolean {
+  if (rec.state === "POSTING") return true;
   const p = rec.postProgress;
   return p != null && !p.reviewPosted &&
-    (p.repliesPosted.length > 0 || p.threadsResolved.length > 0 ||
+    (p.pendingReviewId != null ||
+     p.repliesPosted.length > 0 || p.threadsResolved.length > 0 ||
      p.threadsAdded.length > 0 || p.threadsFailed.length > 0);
 }
 
@@ -85,6 +95,12 @@ export const api = {
   submitFeedback(deps: ApiDeps, key: string, text: string): { ok: true } | Err {
     const rec = deps.store.get(key);
     if (!rec) return NF;
+    // A re-draft nulls postProgress (runGeneration) — wiping the repliesPosted /
+    // threadsResolved ledger that keeps a resumed post from re-posting a reply
+    // to the same GitHub thread. While the draft is locked, that ledger is the
+    // only thing preventing a duplicate mutation, so a fresh draft must wait
+    // until the user resolves the lock (retry post, or force-approve).
+    if (draftLocked(rec)) return LOCKED;
     if (rec.draft) deps.store.snapshot(rec);
     rec.feedbackHistory.push({ at: deps.nowIso(), text, producedVersion: rec.draftVersion + 1 });
     rec.state = "GENERATING";

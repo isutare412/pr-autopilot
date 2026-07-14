@@ -266,12 +266,18 @@ export async function execute(
         // Runs *after* reconcile: the discarded-draft branch above legitimately
         // resets both lists, and that reset must win.
         //
-        // Id-stability note: this compares finding *ids*, which come from the
-        // model's JSON and are not content-stable across drafts. That's sound
-        // today only because postProgress is always nulled on a re-draft and
-        // toggle/editItem are locked (draftLocked) once anything has landed — if
-        // a future change starts preserving postProgress across a re-draft,
-        // id reuse could defeat this comparison silently.
+        // Id-stability note: this compares finding *ids* only — never bodies.
+        // Ids come from the model's JSON and are not content-stable across
+        // drafts. That's sound today only because postProgress is always
+        // nulled on a re-draft and toggle/editItem are locked (draftLocked)
+        // the instant a pending review exists, closing the window (a full
+        // network round-trip between persisting pendingReviewId and the first
+        // addReviewThread) where a same-id edit could otherwise slip through:
+        // this check would see the id unchanged and pass, and execute() would
+        // then post the *old* captured body while the UI showed the *new* one
+        // as sent — id stability says nothing about content staying put. If a
+        // future change starts preserving postProgress across a re-draft, id
+        // reuse could defeat this comparison silently.
         const specIds = new Set(specs.map((s) => s.id));
         const attached = [...progress.threadsAdded, ...progress.threadsFailed];
         if (attached.some((id) => !specIds.has(id))) throw new Error(DRAFT_CHANGED_AFTER_POST);

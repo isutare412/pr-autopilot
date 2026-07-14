@@ -16,6 +16,12 @@ interface ActionsBarProps {
   state: string;
   dismissed?: boolean;
   postVerdict?: Verdict;
+  /** True once a post is in flight or has partly landed on GitHub (mirrors
+   *  api.ts's draftLocked, same prop FindingCard/VerifyCard take). Sending
+   *  feedback now would regenerate the draft and, with it, erase the
+   *  repliesPosted/threadsResolved ledger that keeps a retried post from
+   *  posting a reply GitHub already has. */
+  locked?: boolean;
   onApprove: (verdict: Verdict) => void;
   onDismiss: () => void;
   onRestore: () => void;
@@ -23,6 +29,9 @@ interface ActionsBarProps {
   onForceApprove: () => void;
   onFeedback: (text: string) => void;
 }
+
+const FEEDBACK_LOCKED_TITLE =
+  "Part of this review has already posted to GitHub — sending feedback now would start a fresh draft and could duplicate what's already there. Retry the post instead.";
 
 /** The default disposition: "approve" when the only open items are Nit findings
  *  (and/or resolve replies) — the nits ship on the approval; "comment" (and
@@ -48,7 +57,7 @@ function postSummary(draft: UiDraft, verdict: Verdict): string {
   return `${content} · ${verdict === "comment" ? "re-requests you" : "approves, done"}`;
 }
 
-export function ActionsBar({ draft, state, dismissed, postVerdict, onApprove, onDismiss, onRestore, onDelete, onForceApprove, onFeedback }: ActionsBarProps) {
+export function ActionsBar({ draft, state, dismissed, postVerdict, locked, onApprove, onDismiss, onRestore, onDelete, onForceApprove, onFeedback }: ActionsBarProps) {
   const [feedbackText, setFeedbackText] = useState("");
   const [verdict, setVerdict] = useState<Verdict>(postVerdict ?? defaultVerdict(draft));
 
@@ -58,9 +67,10 @@ export function ActionsBar({ draft, state, dismissed, postVerdict, onApprove, on
   const canPost = state === "NEEDS_REVIEW" || isError;
   const hidden = !!dismissed;
   const pretty = state.toLowerCase().replace(/_/g, " ");
+  const feedbackDisabled = locked || !feedbackText.trim();
 
   function handleSend() {
-    if (!feedbackText.trim()) return;
+    if (locked || !feedbackText.trim()) return;
     onFeedback(feedbackText);
     setFeedbackText("");
   }
@@ -115,6 +125,8 @@ export function ActionsBar({ draft, state, dismissed, postVerdict, onApprove, on
           id="feedback"
           placeholder="resolve V2 · drop #1 · soften #1"
           value={feedbackText}
+          disabled={locked}
+          title={locked ? FEEDBACK_LOCKED_TITLE : undefined}
           onChange={(e) => setFeedbackText(e.target.value)}
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -123,7 +135,7 @@ export function ActionsBar({ draft, state, dismissed, postVerdict, onApprove, on
             }
           }}
         />
-        <button id="send" onClick={handleSend} disabled={!feedbackText.trim()}>
+        <button id="send" onClick={handleSend} disabled={feedbackDisabled} title={locked ? FEEDBACK_LOCKED_TITLE : undefined}>
           Send
         </button>
       </div>
