@@ -277,6 +277,10 @@ export class Gh {
       throw e;
     }
     const n = JSON.parse(out).data.node as { state: string; url: string } | null;
-    return n ? { state: n.state, url: n.url } : null;
+    // A node that resolved to something other than a PullRequestReview comes back
+    // as `{}` from the inline fragment — truthy but stateless. Treat that the same
+    // as a missing node rather than reporting a "landed" review with no URL.
+    if (!n?.state) return null;
+    return { state: n.state, url: n.url };
   }
 }

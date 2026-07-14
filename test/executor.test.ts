@@ -106,7 +106,7 @@ function ghReconcile(
   const rec = new Recorder((args) => {
     const joined = args.join(" ");
     if (args.includes("state,headRefOid,id")) return JSON.stringify({ state: "OPEN", headRefOid: "SHA1", id: "PR_node1" });
-    if (joined.includes("PullRequestReview { state url }") || joined.includes("... on PullRequestReview"))
+    if (joined.includes("... on PullRequestReview"))
       return JSON.stringify({ data: { node: storedState } });
     if (joined.includes("reviews(first:1,states:PENDING"))
       return JSON.stringify({ data: { repository: { pullRequest: {
@@ -692,15 +692,21 @@ describe("execute → pending-review reconciliation", () => {
     expect(out.postProgress?.reviewPosted).toBe(true);
   });
 
-  it("stored id gone (user discarded the draft) → recreates and re-adds every thread", async () => {
+  it("stored id gone (user discarded the draft) → recreates and re-adds every thread, resetting threadsFailed too", async () => {
     const { gh, rec } = ghReconcile(null, null);   // node no longer exists
     const r = baseRec();
-    r.postProgress = progressWith({ pendingReviewId: "PRR_dead", threadsAdded: ["f1"] });
+    r.draft!.findings[1].included = true;   // include f2 too, so a stale threadsFailed entry is exercised
+    r.postProgress = progressWith({ pendingReviewId: "PRR_dead", threadsAdded: ["f1"], threadsFailed: ["f2"] });
     const out = await execute(gh, r, "me", "2026-07-14T00:00:00Z");
     expect(out.postProgress?.pendingReviewId).toBe("PRR_new");
-    // the discarded draft took its threads with it — f1 must be re-added, not skipped
-    expect(threadCalls(rec).length).toBe(1);
-    expect(out.postProgress?.threadsAdded).toEqual(["f1"]);
+    // the discarded draft took its threads with it — both f1 and f2 must be re-added as
+    // threads, not skipped (a stale threadsAdded) or folded into the submit body (a stale
+    // threadsFailed, which would silently reintroduce the bug this branch fixes)
+    const threads = threadCalls(rec);
+    expect(threads.length).toBe(2);
+    expect([...out.postProgress!.threadsAdded].sort()).toEqual(["f1", "f2"]);
+    expect(out.postProgress?.threadsFailed).toEqual([]);
+    expect(argValue(submitCall(rec)!, "body")).not.toContain("b.go:9");   // not folded — landed as a thread
   });
 
   it("a pending review we don't own → aborts, posting nothing", async () => {

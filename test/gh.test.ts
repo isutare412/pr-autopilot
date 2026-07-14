@@ -185,4 +185,20 @@ describe("Gh", () => {
     const gh = new Gh(r, "github.com");
     expect(await gh.reviewState("PRR_gone")).toBeNull();
   });
+
+  it("reviewState rejects a transport error rather than reporting the review discarded", async () => {
+    const r = new FakeRunner(() => {
+      throw new Error("gh api graphql exited 1: dial tcp: connection refused");
+    });
+    const gh = new Gh(r, "github.com");
+    await expect(gh.reviewState("PRR_1")).rejects.toThrow("connection refused");
+  });
+
+  it("reviewState rejects an auth error rather than reporting the review discarded", async () => {
+    const r = new FakeRunner(() => {
+      throw new Error("gh api graphql exited 1: HTTP 401: Bad credentials");
+    });
+    const gh = new Gh(r, "github.com");
+    await expect(gh.reviewState("PRR_1")).rejects.toThrow("Bad credentials");
+  });
 });
