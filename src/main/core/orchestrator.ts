@@ -104,6 +104,23 @@ export class Orchestrator {
   async runGeneration(key: string, mode: Mode, pr: SearchPr, feedback?: string, skipIfTerminal = false): Promise<void> {
     await this.store.withLock(key, async () => {
       let rec = this.store.get(key);
+      // Atomic re-check: every *caller* of runGeneration/enqueueGen already gates on
+      // hasUnspentLedger (submitFeedback, runPost's STALE recovery, decideWork's
+      // unattended re-review), but each of them checks-then-acts across an await —
+      // runPoll in particular snapshots heads, awaits per-PR network calls, calls
+      // decideWork, and only then queues a job that runs later still. In that window
+      // a post can half-land (e.g. createPendingReview succeeds, then the submit
+      // fails against a head the author just pushed), leaving an unspent ledger the
+      // caller's check never saw. Re-checking here, under the same lock this method
+      // mutates the record in, closes that race: check and act are now atomic. This
+      // demotes carryLedger's ledger-carry branch below to pure defence in depth — it
+      // can still fire if this gate is ever bypassed or its definition drifts from
+      // hasUnspentLedger's, but every ordinary path is stopped here first.
+      if (rec && hasUnspentLedger(rec)) {
+        this.store.put({ ...rec, state: "ERROR",
+          error: { step: "generate", message: POST_STALLED_MID_CYCLE }, updatedAt: this.d.nowIso() });
+        return;
+      }
       // A terminal record means another lane finished this PR while a regen sat
       // queued — e.g. a give-up force-approve on a STALE record won the postQueue
       // race and set DONE. Don't resurrect it. Only the recovery/feedback/STALE

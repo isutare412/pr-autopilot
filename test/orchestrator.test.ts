@@ -490,8 +490,17 @@ describe("Orchestrator — live settings", () => {
 /** The class of bug this whole split exists to kill: a draft regenerated in the
  *  middle of a post cycle used to take the idempotency ledger down with it, so the
  *  next post re-sent replies GitHub already had. The sent half is keyed by GitHub's
- *  own ids and now survives a re-draft; the review half, keyed by the old draft's
- *  finding ids, does not. */
+ *  own ids and (in principle) survives a re-draft via carryLedger; the review half,
+ *  keyed by the old draft's finding ids, does not.
+ *
+ *  FINDING I-2 closed the only path that used to reach carryLedger's carry-branch
+ *  outside a narrow poll race: runGeneration itself now re-checks hasUnspentLedger
+ *  atomically, under the same lock it mutates the record in, before ever calling
+ *  generate(). Any record whose ledger is unspent — which, by construction, is
+ *  every record carryLedger would otherwise have carried a non-empty sent half
+ *  from — is now stopped right there. carryLedger is kept as pure defence in
+ *  depth (see orchestrator.ts), so the first test below now pins the atomic gate
+ *  instead of the carry it used to exercise. */
 describe("Orchestrator — the post ledger across a re-draft", () => {
   /** Same GitHub thread (N1 / reply target 111) in two different drafts, wearing a
    *  different *local* id each time — exactly what a regeneration produces. */
@@ -504,12 +513,15 @@ describe("Orchestrator — the post ledger across a re-draft", () => {
     overallEn: "o", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [v],
   });
 
-  it("carries the sent half into the new draft, so a reply already on GitHub is not sent twice", async () => {
+  it("FINDING I-2: runGeneration itself rejects an unspent ledger, atomically — no silent redraft over a half-landed post", async () => {
     const { orch, store } = mkOrch();
     const gh = (orch as any).d.gh;
     gh.postReply = vi.fn(async () => {});
 
-    // A cycle that landed the reply to thread 111 and then died before the review.
+    // A cycle that landed the reply to thread 111 and then died before the review —
+    // exactly the record a caller-side hasUnspentLedger check would also have
+    // refused, but here runGeneration is called directly (as the queued job from
+    // the I-2 poll race would be) to pin the re-check inside the lock itself.
     const key = seed(store, 80, "ERROR", {
       draft: draftWith(verify("v1")), draftVersion: 1, mode: "re-review", headSha: "SHA1",
       postProgress: {
@@ -519,16 +531,15 @@ describe("Orchestrator — the post ledger across a re-draft", () => {
       },
     });
 
-    // The draft is regenerated. The same GitHub thread comes back with a *new* local id.
     orch.generate = vi.fn(async () => draftWith(verify("v-REGENERATED")));
     await orch.runGeneration(key, "re-review", { url: "http://x/O/R/pull/80", owner: "O", repo: "R", number: 80, title: "t" });
 
-    const regenerated = store.get(key)!;
-    expect(regenerated.state).toBe("NEEDS_REVIEW");
-    expect(regenerated.draft!.verify[0].id).toBe("v-REGENERATED");   // a genuinely new local id…
-    expect(regenerated.postProgress!.sent.repliedTargets).toEqual([111]);   // …but GitHub's id is remembered
-    // the review half belongs to the old draft's findings and is reset
-    expect(regenerated.postProgress!.review).toEqual({ pendingReviewId: null, threadsAdded: [], threadsFailed: [] });
+    const rec = store.get(key)!;
+    expect(rec.state).toBe("ERROR");
+    expect(rec.error).toEqual({ step: "generate", message: POST_STALLED_MID_CYCLE });
+    expect(orch.generate).not.toHaveBeenCalled();
+    expect(rec.draft!.verify[0].id).toBe("v1");                          // draft NOT replaced
+    expect(rec.postProgress!.sent.repliedTargets).toEqual([111]);        // ledger left exactly as it was
 
     await orch.runPost(key);
 
