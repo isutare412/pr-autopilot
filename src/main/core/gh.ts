@@ -98,13 +98,13 @@ export class Gh {
     return out.trim();
   }
 
-  async prStatus(owner: string, repo: string, number: number): Promise<{ state: string; headSha: string }> {
+  async prStatus(owner: string, repo: string, number: number): Promise<{ state: string; headSha: string; nodeId: string }> {
     const out = await this.runner.run([
       "pr", "view", String(number), "--repo", `${this.host}/${owner}/${repo}`,
-      "--json", "state,headRefOid",
+      "--json", "state,headRefOid,id",
     ]);
     const j = JSON.parse(out);
-    return { state: j.state as string, headSha: j.headRefOid as string };
+    return { state: j.state as string, headSha: j.headRefOid as string, nodeId: j.id as string };
   }
 
   async prState(owner: string, repo: string, number: number): Promise<string> {

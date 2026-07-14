@@ -30,7 +30,7 @@ class Recorder implements GhRunner {
 
 function ghWith(headSha: string, state = "OPEN"): { gh: Gh; rec: Recorder } {
   const rec = new Recorder((args) => {
-    if (args.includes("state,headRefOid")) return JSON.stringify({ state, headRefOid: headSha });
+    if (args.includes("state,headRefOid,id")) return JSON.stringify({ state, headRefOid: headSha, id: "PR_node1" });
     if (args.some((a) => a.includes("/reviews"))) return JSON.stringify({ html_url: "http://x/r/1" });
     return "{}";
   });
@@ -187,7 +187,7 @@ describe("execute", () => {
     expect(out.state).toBe("STALE");
     // post NOTHING: only the prStatus preflight call may have run
     expect(rec.calls.length).toBe(1);
-    expect(rec.calls[0].args).toContain("state,headRefOid");
+    expect(rec.calls[0].args).toContain("state,headRefOid,id");
   });
 
   it("transitions to CLOSED without posting when the PR is merged", async () => {
@@ -195,7 +195,7 @@ describe("execute", () => {
     const out = await execute(gh, baseRec(), "me", "2026-06-29T00:00:00Z");
     expect(out.state).toBe("CLOSED");
     expect(rec.calls.length).toBe(1);                 // only the prStatus preflight ran
-    expect(rec.calls[0].args).toContain("state,headRefOid");
+    expect(rec.calls[0].args).toContain("state,headRefOid,id");
     expect(rec.calls.some((c) => c.args.some((a) => a.includes("/reviews")))).toBe(false);
   });
 

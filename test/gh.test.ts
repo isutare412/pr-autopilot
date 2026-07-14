@@ -47,11 +47,11 @@ describe("Gh", () => {
   });
 
   it("prStatus returns the PR state and head SHA in one call", async () => {
-    const r = new FakeRunner(() => JSON.stringify({ state: "MERGED", headRefOid: "SHA9" }));
+    const r = new FakeRunner(() => JSON.stringify({ state: "MERGED", headRefOid: "SHA9", id: "PR_node9" }));
     const gh = new Gh(r, "github.com");
-    expect(await gh.prStatus("O", "R", 65)).toEqual({ state: "MERGED", headSha: "SHA9" });
+    expect(await gh.prStatus("O", "R", 65)).toEqual({ state: "MERGED", headSha: "SHA9", nodeId: "PR_node9" });
     expect(r.calls[0].args).toEqual(
-      ["pr", "view", "65", "--repo", "github.com/O/R", "--json", "state,headRefOid"],
+      ["pr", "view", "65", "--repo", "github.com/O/R", "--json", "state,headRefOid,id"],
     );
   });
 
@@ -63,5 +63,14 @@ describe("Gh", () => {
     expect(c.args).toContain("--json");
     expect(c.args).toContain("state");
     expect(c.args).toContain(".state");
+  });
+
+  it("prStatus returns state, head sha and the PR node id", async () => {
+    const r = new FakeRunner(() =>
+      JSON.stringify({ state: "OPEN", headRefOid: "SHA1", id: "PR_node1" }));
+    const gh = new Gh(r, "github.com");
+    const s = await gh.prStatus("O", "R", 65);
+    expect(s).toEqual({ state: "OPEN", headSha: "SHA1", nodeId: "PR_node1" });
+    expect(r.calls[0].args).toContain("state,headRefOid,id");
   });
 });
