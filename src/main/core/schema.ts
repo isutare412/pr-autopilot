@@ -192,13 +192,16 @@ export type PrRecord = z.infer<typeof PrRecord>;
  *  unrecoverable — we know something landed but not on what. So we fail safe and
  *  mark *every* thread in the draft as already sent: skipping a reply the user can
  *  still post by hand is recoverable; posting a second copy into the author's
- *  thread is not. */
+ *  thread is not. When there is no draft at all to fall back onto (the "every
+ *  thread" pool is empty), that same fail-safe would otherwise come back empty —
+ *  see reKey's placeholder fallback below for how it stays non-empty instead. */
 function migratePostProgress(old: Record<string, unknown>, rawDraft: unknown): unknown {
   const verify = (rawDraft as { verify?: unknown } | null | undefined)?.verify;
   const items = (Array.isArray(verify) ? verify : []) as Record<string, unknown>[];
 
-  function reKey<T>(localIds: unknown, field: "replyTargetDatabaseId" | "threadNodeId"): T[] {
+  function reKey<T>(localIds: unknown, field: "replyTargetDatabaseId" | "threadNodeId", placeholder: T): T[] {
     const ids = Array.isArray(localIds) ? localIds : [];
+    if (ids.length === 0) return [];
     const out = new Set<T>();
     let unmappable = false;
     for (const id of ids) {
@@ -207,13 +210,22 @@ function migratePostProgress(old: Record<string, unknown>, rawDraft: unknown): u
       else unmappable = true;
     }
     if (unmappable) for (const it of items) if (it[field] != null) out.add(it[field] as T);
+    // The fail-safe above assumes a *current* draft to fall back onto. When there is
+    // none (draft is null/gone), `items` is empty, so the loop adds nothing and `out`
+    // is left empty — silently turning "we know something landed" into "nothing was
+    // ever sent", exactly the one direction this function must never take. A
+    // placeholder can't collide with a real GitHub id (a record missing its draft
+    // never reaches execute() — runPost bails before calling it — so nothing ever
+    // compares this value against a live id); it exists purely so this half stays
+    // non-empty, which is what hasUnspentLedger and the UI actually key off of.
+    if (out.size === 0) out.add(placeholder);
     return [...out];
   }
 
   return {
     sent: {
-      repliedTargets: reKey<number>(old.repliesPosted, "replyTargetDatabaseId"),
-      resolvedThreads: reKey<string>(old.threadsResolved, "threadNodeId"),
+      repliedTargets: reKey<number>(old.repliesPosted, "replyTargetDatabaseId", -1),
+      resolvedThreads: reKey<string>(old.threadsResolved, "threadNodeId", "unmapped-on-migration"),
     },
     review: {
       pendingReviewId: old.pendingReviewId ?? null,

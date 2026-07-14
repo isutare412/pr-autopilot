@@ -137,4 +137,19 @@ describe("migrateRecord — the pre-split postProgress", () => {
     const rec = PrRecord.parse(migrateRecord(oldRecord(null, [])));
     expect(rec.postProgress).toBeNull();
   });
+
+  it("never reports an empty sent half when the old ledger was non-empty but the draft is gone", () => {
+    // Same "something landed, but we can't say what" situation as the unmappable-id
+    // case above — except here there is no draft at all to fall back onto, so the
+    // usual "mark every thread in the draft as sent" fallback has nothing to mark.
+    // Coming back with an *empty* sent half would silently forget the mutation ever
+    // happened — the one direction migratePostProgress must never take.
+    const raw = { ...oldRecord(
+      { repliesPosted: ["v1"], threadsResolved: ["v1"], reviewPosted: false, reviewerRequested: false },
+      [],
+    ), draft: null };
+    const rec = PrRecord.parse(migrateRecord(raw));
+    const sent = rec.postProgress!.sent;
+    expect(sent.repliedTargets.length > 0 || sent.resolvedThreads.length > 0).toBe(true);
+  });
 });
