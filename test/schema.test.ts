@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { GeneratedDraft, PrRecord, prKey, fileKey, LANGUAGE_LABEL, PostProgress, migrateRecord } from "../src/main/core/schema";
+import { hasUnspentLedger } from "../src/main/core/api";
+import { decideWork } from "../src/main/core/poller";
+import type { SearchPr } from "../src/main/core/gh";
 
 describe("GeneratedDraft", () => {
   it("applies defaults for user-only fields Claude omits", () => {
@@ -79,13 +82,14 @@ describe("migrateRecord — the pre-split postProgress", () => {
     verdict: "resolve", rationaleEn: "fixed", replyBody: "done", included: true, editedBody: null,
   });
 
-  const oldRecord = (postProgress: unknown, verify: unknown[]) => ({
+  const oldRecord = (postProgress: unknown, verify: unknown[], over: Record<string, unknown> = {}) => ({
     key: "github.com/O/R#65", host: "github.com", owner: "O", repo: "R", number: 65,
     url: "http://x", title: "t", author: "a", baseRef: "develop", state: "ERROR",
     mode: "re-review", headSha: "SHA1", draftVersion: 1,
     draft: { overallEn: "o", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify },
     feedbackHistory: [], postResult: null, postProgress, error: null,
     discoveredAt: "t", generatedAt: "t", updatedAt: "t", doneAt: null,
+    ...over,
   });
 
   it("re-keys local verify ids onto replyTargetDatabaseId / threadNodeId", () => {
@@ -151,5 +155,54 @@ describe("migrateRecord — the pre-split postProgress", () => {
     const rec = PrRecord.parse(migrateRecord(raw));
     const sent = rec.postProgress!.sent;
     expect(sent.repliedTargets.length > 0 || sent.resolvedThreads.length > 0).toBe(true);
+  });
+
+  /** FINDING 1: a record the *shipping* app persisted while CLOSED/DONE mid-post-cycle
+   *  must not migrate into a terminal record that still carries an unspent ledger —
+   *  hasUnspentLedger would then be permanently true for it, and decideWork would skip
+   *  a reopened+pushed version of it forever (the I-1 wedge, reappearing via the
+   *  upgrade path). Only store.prune eventually clearing it is not good enough. */
+  describe("terminal states spend an unspent ledger on migration", () => {
+    const unspentOld = { repliesPosted: ["v1"], threadsResolved: ["v1"],
+      reviewPosted: false, reviewerRequested: false, pendingReviewId: "PRR_1" };
+
+    for (const terminal of ["CLOSED", "DONE"] as const) {
+      it(`clears postProgress for an old-shape ${terminal} record with a non-empty ledger`, () => {
+        const rec = PrRecord.parse(migrateRecord(oldRecord(
+          unspentOld, [verifyItem("v1", "N1", 111)], { state: terminal },
+        )));
+        expect(rec.state).toBe(terminal);
+        expect(rec.postProgress).toBeNull();
+        expect(hasUnspentLedger(rec)).toBe(false);
+      });
+    }
+
+    it("does NOT clear the ledger for an old-shape record in a non-terminal state (ERROR)", () => {
+      // Same ledger, same migration, but ERROR is recoverable — the user's "Retry
+      // post" escape needs the ledger intact to resume mid-cycle instead of
+      // duplicating what already landed. state defaults to "ERROR" in oldRecord.
+      const rec = PrRecord.parse(migrateRecord(oldRecord(
+        unspentOld, [verifyItem("v1", "N1", 111)],
+      )));
+      expect(rec.state).toBe("ERROR");
+      expect(rec.postProgress).not.toBeNull();
+      expect(hasUnspentLedger(rec)).toBe(true);
+    });
+
+    it("a reopened+pushed CLOSED record with a migrated unspent ledger IS picked up by decideWork, not skipped forever", () => {
+      const migrated = PrRecord.parse(migrateRecord(oldRecord(
+        unspentOld, [verifyItem("v1", "N1", 111)], { state: "CLOSED", headSha: "SHA1" },
+      )));
+      expect(hasUnspentLedger(migrated)).toBe(false); // sanity: this is what unwedges it
+
+      const pr: SearchPr = { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t" };
+      const work = decideWork({
+        queue: [pr],
+        existing: new Map([[migrated.key, migrated]]),
+        liveHeads: new Map([[migrated.key, "SHA2"]]), // the author pushed after reopening
+        authorRepliedKeys: new Set(),
+      });
+      expect(work.map((w) => w.key)).toEqual([migrated.key]);
+    });
   });
 });

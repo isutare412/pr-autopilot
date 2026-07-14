@@ -262,6 +262,23 @@ export function migrateRecord(raw: unknown): unknown {
   if (p && typeof p === "object" && !("sent" in p)) {
     r.postProgress = migratePostProgress(p as Record<string, unknown>, r.draft);
   }
+  // A record the *shipping* app persisted while CLOSED or DONE mid-post-cycle
+  // predates the invariant that every terminal transition spends its ledger
+  // (forceApprove, execute()'s non-OPEN exit, the poll's closed-sweep all set
+  // `postProgress: null` themselves — see each). Without this, such a record
+  // migrates into a terminal state that still carries an *unspent* ledger, so
+  // hasUnspentLedger stays permanently true for it and a reopened-then-pushed PR
+  // is skipped by decideWork forever — the I-1 wedge again, sneaking back in
+  // through the upgrade path instead of a fresh regeneration race. CLOSED/DONE
+  // are the only states this applies to: both mean the cycle is over and, if the
+  // PR ever comes back (a reopen), that is unambiguously a *new* cycle, so
+  // whatever the old one left behind is safe to discard. ERROR and STALE are
+  // deliberately excluded — their unspent ledger is exactly what lets the user's
+  // "Retry post" escape resume mid-cycle instead of duplicating what already
+  // landed; clearing it here would silently break that recovery path.
+  if (r.state === "CLOSED" || r.state === "DONE") {
+    r.postProgress = null;
+  }
   return r;
 }
 
