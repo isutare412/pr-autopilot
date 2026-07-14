@@ -80,6 +80,11 @@ query($owner:String!,$repo:String!,$number:Int!,$author:String!){
   }
 }`;
 
+const REVIEW_STATE_QUERY = `
+query($id:ID!){
+  node(id:$id){ ... on PullRequestReview { state url } }
+}`;
+
 /** One review thread to attach to a pending review. `subjectType: "FILE"` anchors
  *  the thread to the whole file — the only way to comment on a line GitHub won't
  *  accept inline (anything outside the diff hunks). Line fields are omitted for
@@ -255,5 +260,23 @@ export class Gh {
     ]);
     const nodes = JSON.parse(out).data.repository.pullRequest.reviews.nodes as { id: string }[];
     return nodes[0]?.id ?? null;
+  }
+
+  /** The state and URL of a review we previously opened, or null if it no longer
+   *  exists. This is what tells a resumed post whether its stored review is still
+   *  a PENDING draft to resume into, or was already SUBMITTED (in which case the
+   *  review landed and only our bookkeeping was lost — re-posting would duplicate
+   *  it on the author's PR). GitHub answers a dangling id with an error rather
+   *  than a null node, so that case is mapped to null too. */
+  async reviewState(reviewId: string): Promise<{ state: string; url: string } | null> {
+    let out: string;
+    try {
+      out = await this.api(["graphql", "-f", `id=${reviewId}`, "-f", `query=${REVIEW_STATE_QUERY}`]);
+    } catch (e) {
+      if (/could not resolve to a node/i.test(String(e))) return null;
+      throw e;
+    }
+    const n = JSON.parse(out).data.node as { state: string; url: string } | null;
+    return n ? { state: n.state, url: n.url } : null;
   }
 }

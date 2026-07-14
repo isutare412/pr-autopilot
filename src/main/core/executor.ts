@@ -3,6 +3,9 @@ import { Draft, Finding, PrRecord, PostProgress, PostVerdict } from "./schema";
 
 const APPROVE_BODY = "LGTM :+1:";
 
+export const PENDING_REVIEW_CONFLICT =
+  "An unsubmitted pending review already exists on this PR — submit or discard it on GitHub, then retry.";
+
 /** A finding's two ways onto the PR. `line` is the precise inline thread; `file`
  *  is the whole-file thread — the honest fallback when GitHub won't anchor to the
  *  line, which it refuses for anything outside the diff hunks. Every spec carries
@@ -80,13 +83,47 @@ export function buildReviewPayload(
     : null;
 }
 
-async function openPendingReview(
-  gh: Gh, prNodeId: string, commitOid: string, progress: PostProgress, save: () => void,
-): Promise<string> {
-  if (progress.pendingReviewId) return progress.pendingReviewId;
+/** What the PR's actual state says we should do with the review we may have opened. */
+type Reconciled =
+  | { kind: "review"; reviewId: string }        // a PENDING draft to add threads to
+  | { kind: "landed"; url: string };            // already submitted — do not post again
+
+/** GitHub allows exactly one pending review per user per PR, so before opening one we
+ *  reconcile what is actually on the PR against what we last persisted:
+ *
+ *   - stored id, still PENDING   → resume into it, keeping the threads already added.
+ *   - stored id, now SUBMITTED   → the review LANDED and only our bookkeeping was lost
+ *                                  (a crash between GitHub's 200 and our disk write).
+ *                                  Re-posting would put a second review on the author's
+ *                                  PR, so we recover the URL and stop.
+ *   - stored id, node gone       → the user discarded the draft in the browser; its
+ *                                  threads went with it, so recreate and re-add all.
+ *   - nothing stored, none live  → create.
+ *   - a pending review we cannot account for → ABORT. It is either a crash orphan or a
+ *     draft the user wrote by hand, and the API cannot tell those apart. Deleting would
+ *     destroy their work with no undo; adopting would post their private comments inside
+ *     an autopilot review. So we touch neither and say so. */
+async function reconcilePendingReview(
+  gh: Gh, rec: PrRecord, login: string, prNodeId: string, commitOid: string,
+  progress: PostProgress, save: () => void,
+): Promise<Reconciled> {
+  if (progress.pendingReviewId) {
+    const stored = await gh.reviewState(progress.pendingReviewId);
+    if (stored?.state === "PENDING") return { kind: "review", reviewId: progress.pendingReviewId };
+    if (stored) return { kind: "landed", url: stored.url };
+    progress.pendingReviewId = null;   // discarded — fall through and rebuild it
+    progress.threadsAdded = [];
+    progress.threadsFailed = [];
+  }
+
+  const live = await gh.findPendingReview(rec.owner, rec.repo, rec.number, login);
+  if (live) throw new Error(PENDING_REVIEW_CONFLICT);
+
   progress.pendingReviewId = await gh.createPendingReview(prNodeId, commitOid);
+  progress.threadsAdded = [];    // a fresh draft holds none of the old threads
+  progress.threadsFailed = [];
   save();
-  return progress.pendingReviewId;
+  return { kind: "review", reviewId: progress.pendingReviewId };
 }
 
 /** GitHub refusing to anchor a comment — the API rejects any line outside the diff
@@ -175,20 +212,27 @@ export async function execute(
         reviewUrl = res.html_url;
       }
     } else {
-      const reviewId = await openPendingReview(gh, nodeId, liveSha, progress, save);
+      const target = await reconcilePendingReview(gh, rec, login, nodeId, liveSha, progress, save);
 
-      for (const spec of specs) {
-        if (progress.threadsAdded.includes(spec.id) || progress.threadsFailed.includes(spec.id)) continue;
-        const landed = await addThreadWithFallback(gh, reviewId, spec);
-        (landed ? progress.threadsAdded : progress.threadsFailed).push(spec.id);
-        save();
+      if (target.kind === "landed") {
+        // The review is already on the PR — a crash lost only our record of it.
+        reviewUrl = target.url;
+      } else {
+        const reviewId = target.reviewId;
+
+        for (const spec of specs) {
+          if (progress.threadsAdded.includes(spec.id) || progress.threadsFailed.includes(spec.id)) continue;
+          const landed = await addThreadWithFallback(gh, reviewId, spec);
+          (landed ? progress.threadsAdded : progress.threadsFailed).push(spec.id);
+          save();
+        }
+
+        const failed = draft.findings.filter((f) => progress.threadsFailed.includes(f.id));
+        const res = await gh.submitReview(
+          reviewId, verdict === "approve" ? "APPROVE" : "COMMENT", buildSubmitBody(verdict, failed),
+        );
+        reviewUrl = res.url;
       }
-
-      const failed = draft.findings.filter((f) => progress.threadsFailed.includes(f.id));
-      const res = await gh.submitReview(
-        reviewId, verdict === "approve" ? "APPROVE" : "COMMENT", buildSubmitBody(verdict, failed),
-      );
-      reviewUrl = res.url;
     }
 
     progress.reviewPosted = true;   // mark done even when skipped, so resume doesn't retry

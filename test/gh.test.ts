@@ -155,4 +155,34 @@ describe("Gh", () => {
     const gh = new Gh(r, "github.com");
     expect(await gh.findPendingReview("O", "R", 65, "me")).toBeNull();
   });
+
+  it("reviewState returns the stored review's state and url", async () => {
+    const r = new FakeRunner(() =>
+      JSON.stringify({ data: { node: { state: "PENDING", url: "http://x/r/1" } } }));
+    const gh = new Gh(r, "github.com");
+    expect(await gh.reviewState("PRR_1")).toEqual({ state: "PENDING", url: "http://x/r/1" });
+    expect(r.calls[0].args).toContain("id=PRR_1");
+    expect(r.calls[0].args.join(" ")).toContain("PullRequestReview");
+  });
+
+  it("reviewState reports a submitted review, not a pending one", async () => {
+    const r = new FakeRunner(() =>
+      JSON.stringify({ data: { node: { state: "APPROVED", url: "http://x/r/9" } } }));
+    const gh = new Gh(r, "github.com");
+    expect(await gh.reviewState("PRR_1")).toEqual({ state: "APPROVED", url: "http://x/r/9" });
+  });
+
+  it("reviewState returns null when the review no longer exists", async () => {
+    const r = new FakeRunner(() => JSON.stringify({ data: { node: null } }));
+    const gh = new Gh(r, "github.com");
+    expect(await gh.reviewState("PRR_gone")).toBeNull();
+  });
+
+  it("reviewState returns null when GitHub cannot resolve the node id", async () => {
+    const r = new FakeRunner(() => {
+      throw new Error("gh api graphql exited 1: Could not resolve to a node with the global id of 'PRR_gone'");
+    });
+    const gh = new Gh(r, "github.com");
+    expect(await gh.reviewState("PRR_gone")).toBeNull();
+  });
 });

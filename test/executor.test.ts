@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { Gh, GhRunner } from "../src/main/core/gh";
 import {
   execute, buildReviewPayload, buildThreadSpecs, fileThreadBody, buildSubmitBody,
-  defaultVerdict, forceApprove, isDiffRejection,
+  defaultVerdict, forceApprove, isDiffRejection, PENDING_REVIEW_CONFLICT,
 } from "../src/main/core/executor";
 import type { PrRecord, PostProgress } from "../src/main/core/schema";
 
@@ -35,6 +35,8 @@ function ghWith(headSha: string, state = "OPEN"): { gh: Gh; rec: Recorder } {
   const rec = new Recorder((args) => {
     const joined = args.join(" ");
     if (args.includes("state,headRefOid,id")) return JSON.stringify({ state, headRefOid: headSha, id: "PR_node1" });
+    if (joined.includes("... on PullRequestReview"))
+      return JSON.stringify({ data: { node: { state: "PENDING", url: "http://x/r/1" } } });
     if (joined.includes("reviews(first:1,states:PENDING"))
       return JSON.stringify({ data: { repository: { pullRequest: { reviews: { nodes: [] } } } } });
     if (joined.includes("addPullRequestReview(input"))
@@ -60,6 +62,8 @@ function ghFailingThreads(
   const rec = new Recorder((args) => {
     const joined = args.join(" ");
     if (args.includes("state,headRefOid,id")) return JSON.stringify({ state: "OPEN", headRefOid: "SHA1", id: "PR_node1" });
+    if (joined.includes("... on PullRequestReview"))
+      return JSON.stringify({ data: { node: existingPending ? { state: "PENDING", url: "http://x/r/1" } : null } });
     if (joined.includes("reviews(first:1,states:PENDING"))
       return JSON.stringify({ data: { repository: { pullRequest: {
         reviews: { nodes: existingPending ? [{ id: existingPending }] : [] } } } } });
@@ -91,6 +95,42 @@ function submitCall(rec: Recorder) {
 }
 function argValue(call: { args: string[] }, name: string): string | undefined {
   return call.args.find((a) => a.startsWith(`${name}=`))?.slice(name.length + 1);
+}
+
+/** A PR whose pending review (per findPendingReview) is `livePending`, and whose
+ *  stored review node (per reviewState) is `storedState` — null meaning "gone". */
+function ghReconcile(
+  livePending: string | null,
+  storedState: { state: string; url: string } | null = null,
+): { gh: Gh; rec: Recorder } {
+  const rec = new Recorder((args) => {
+    const joined = args.join(" ");
+    if (args.includes("state,headRefOid,id")) return JSON.stringify({ state: "OPEN", headRefOid: "SHA1", id: "PR_node1" });
+    if (joined.includes("PullRequestReview { state url }") || joined.includes("... on PullRequestReview"))
+      return JSON.stringify({ data: { node: storedState } });
+    if (joined.includes("reviews(first:1,states:PENDING"))
+      return JSON.stringify({ data: { repository: { pullRequest: {
+        reviews: { nodes: livePending ? [{ id: livePending }] : [] } } } } });
+    if (joined.includes("addPullRequestReview(input"))
+      return JSON.stringify({ data: { addPullRequestReview: { pullRequestReview: { id: "PRR_new" } } } });
+    if (joined.includes("addPullRequestReviewThread"))
+      return JSON.stringify({ data: { addPullRequestReviewThread: { thread: { id: "T1" } } } });
+    if (joined.includes("submitPullRequestReview"))
+      return JSON.stringify({ data: { submitPullRequestReview: { pullRequestReview: { url: "http://x/r/1" } } } });
+    return "{}";
+  });
+  return { gh: new Gh(rec, "github.com"), rec };
+}
+
+function progressWith(over: Partial<PostProgress> = {}): PostProgress {
+  return {
+    repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
+    pendingReviewId: null, threadsAdded: [], threadsFailed: [], ...over,
+  };
+}
+
+function createCall(rec: Recorder) {
+  return rec.calls.find((c) => c.args.join(" ").includes("addPullRequestReview(input"));
 }
 
 describe("buildThreadSpecs", () => {
@@ -452,13 +492,14 @@ describe("execute → pending-review flow", () => {
   });
 
   it("resume: skips findings already in threadsAdded", async () => {
-    // progress.pendingReviewId is already set, so execute() short-circuits in
-    // openPendingReview() and reuses it directly — it does not call
-    // findPendingReview to re-discover the live pending review (that reconciliation
-    // arrives in a later task).
+    // progress.pendingReviewId is already set, and reviewState reports it still
+    // PENDING, so reconcilePendingReview() resumes into it directly — it does not
+    // call findPendingReview or create a new one.
     const rec = new Recorder((args) => {
       const joined = args.join(" ");
       if (args.includes("state,headRefOid,id")) return JSON.stringify({ state: "OPEN", headRefOid: "SHA1", id: "PR_node1" });
+      if (joined.includes("... on PullRequestReview"))
+        return JSON.stringify({ data: { node: { state: "PENDING", url: "http://x/r/1" } } });
       if (joined.includes("reviews(first:1,states:PENDING"))
         return JSON.stringify({ data: { repository: { pullRequest: { reviews: { nodes: [{ id: "PRR_1" }] } } } } });
       if (joined.includes("submitPullRequestReview"))
@@ -615,5 +656,65 @@ describe("isDiffRejection", () => {
   it("does not swallow transport or auth failures", () => {
     expect(isDiffRejection(new Error("dial tcp: connection refused"))).toBe(false);
     expect(isDiffRejection(new Error("HTTP 401: Bad credentials"))).toBe(false);
+  });
+});
+
+describe("execute → pending-review reconciliation", () => {
+  it("no stored id and no pending review on the PR → creates one", async () => {
+    const { gh, rec } = ghReconcile(null);
+    const out = await execute(gh, baseRec(), "me", "2026-07-14T00:00:00Z");
+    expect(createCall(rec)).toBeDefined();
+    expect(out.postProgress?.pendingReviewId).toBe("PRR_new");
+  });
+
+  it("stored id still PENDING → resumes into it, creates nothing", async () => {
+    const { gh, rec } = ghReconcile("PRR_1", { state: "PENDING", url: "http://x/r/1" });
+    const r = baseRec();
+    r.postProgress = progressWith({ pendingReviewId: "PRR_1", threadsAdded: ["f1"] });
+    await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+    expect(createCall(rec)).toBeUndefined();
+    expect(threadCalls(rec).length).toBe(0);      // f1 already in
+    expect(submitCall(rec)).toBeDefined();
+  });
+
+  /** The crash-after-submit case. The review LANDED; only our bookkeeping was lost.
+   *  Re-posting it would put a second review on the author's PR. */
+  it("stored id already SUBMITTED → recovers the url, posts nothing again", async () => {
+    const { gh, rec } = ghReconcile(null, { state: "APPROVED", url: "http://x/r/landed" });
+    const r = baseRec();
+    r.postProgress = progressWith({ pendingReviewId: "PRR_1", threadsAdded: ["f1"] });
+    const out = await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+
+    expect(createCall(rec)).toBeUndefined();      // no second pending review
+    expect(threadCalls(rec).length).toBe(0);      // no re-added threads
+    expect(submitCall(rec)).toBeUndefined();      // no second submit
+    expect(out.postResult?.reviewUrl).toBe("http://x/r/landed");
+    expect(out.postProgress?.reviewPosted).toBe(true);
+  });
+
+  it("stored id gone (user discarded the draft) → recreates and re-adds every thread", async () => {
+    const { gh, rec } = ghReconcile(null, null);   // node no longer exists
+    const r = baseRec();
+    r.postProgress = progressWith({ pendingReviewId: "PRR_dead", threadsAdded: ["f1"] });
+    const out = await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+    expect(out.postProgress?.pendingReviewId).toBe("PRR_new");
+    // the discarded draft took its threads with it — f1 must be re-added, not skipped
+    expect(threadCalls(rec).length).toBe(1);
+    expect(out.postProgress?.threadsAdded).toEqual(["f1"]);
+  });
+
+  it("a pending review we don't own → aborts, posting nothing", async () => {
+    const { gh, rec } = ghReconcile("PRR_theirs");
+    await expect(execute(gh, baseRec(), "me", "2026-07-14T00:00:00Z"))
+      .rejects.toThrow(PENDING_REVIEW_CONFLICT);
+    expect(createCall(rec)).toBeUndefined();
+    expect(threadCalls(rec).length).toBe(0);
+    expect(submitCall(rec)).toBeUndefined();
+  });
+
+  it("aborts rather than deleting — a hand-written draft is never destroyed", async () => {
+    const { gh, rec } = ghReconcile("PRR_theirs");
+    await expect(execute(gh, baseRec(), "me", "2026-07-14T00:00:00Z")).rejects.toThrow();
+    expect(rec.calls.some((c) => c.args.join(" ").includes("deletePullRequestReview"))).toBe(false);
   });
 });

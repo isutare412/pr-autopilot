@@ -367,6 +367,7 @@ describe("Orchestrator — automated mode", () => {
     // Progress this far: pending review opened and the one finding attached as a
     // thread — both persisted via execute()'s onProgress before submitReview fails.
     gh.prStatus = async () => ({ state: "OPEN", headSha: "SHA1", nodeId: "PR_node1" });
+    gh.findPendingReview = async () => null;   // no pending review yet → reconciliation creates one
     gh.createPendingReview = async () => "PRR_1";
     gh.addReviewThread = async () => {};
     gh.submitReview = async () => { throw new Error("submit boom"); };
