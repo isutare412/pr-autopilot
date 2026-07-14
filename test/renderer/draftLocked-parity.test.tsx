@@ -12,10 +12,20 @@ import type { UiRecord } from "../../src/renderer/src/types";
 // hand-synced pairs — api.ts's draftLocked (gating toggleItem / editItem /
 // submitFeedback) and Detail.tsx's draftLocked (gating the equivalent
 // renderer controls) must always agree.
-function progress(over: Partial<PostProgress> = {}): PostProgress {
+function progress(o: {
+  repliedTargets?: number[]; resolvedThreads?: string[];
+  pendingReviewId?: string | null; threadsAdded?: string[]; threadsFailed?: string[];
+  reviewPosted?: boolean; reviewerRequested?: boolean;
+} = {}): PostProgress {
   return {
-    repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
-    pendingReviewId: null, threadsAdded: [], threadsFailed: [], ...over,
+    sent: { repliedTargets: o.repliedTargets ?? [], resolvedThreads: o.resolvedThreads ?? [] },
+    review: {
+      pendingReviewId: o.pendingReviewId ?? null,
+      threadsAdded: o.threadsAdded ?? [],
+      threadsFailed: o.threadsFailed ?? [],
+    },
+    reviewPosted: o.reviewPosted ?? false,
+    reviewerRequested: o.reviewerRequested ?? false,
   };
 }
 
@@ -45,15 +55,15 @@ describe("draftLocked parity: api.ts vs Detail.tsx", () => {
     check("NEEDS_REVIEW", progress({ pendingReviewId: "PRR_1", threadsFailed: ["f1"] }), true));
 
   it("locked once a reply has posted, even with no pendingReviewId", () =>
-    check("NEEDS_REVIEW", progress({ repliesPosted: ["v1"] }), true));
+    check("NEEDS_REVIEW", progress({ repliedTargets: [111] }), true));
 
   it("locked once a thread has resolved, even with no pendingReviewId", () =>
-    check("NEEDS_REVIEW", progress({ threadsResolved: ["v1"] }), true));
+    check("NEEDS_REVIEW", progress({ resolvedThreads: ["N1"] }), true));
 
   it("unlocked once the review has been submitted, no matter what landed beforehand", () =>
     check("POSTED_AWAITING_AUTHOR", progress({
       pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: ["f2"],
-      repliesPosted: ["v1"], threadsResolved: ["v1"], reviewPosted: true,
+      repliedTargets: [111], resolvedThreads: ["N1"], reviewPosted: true,
     }), false));
 
   it("unlocked in ERROR with an empty-shaped postProgress object (nothing landed)", () =>

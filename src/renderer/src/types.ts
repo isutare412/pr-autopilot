@@ -58,10 +58,12 @@ export interface UiRecord {
   draft: UiDraft | null;
   feedbackHistory: Array<{ at: string; text: string; producedVersion: number }>;
   postResult: { reviewUrl: string | null; postedAt: string; resolvedThreadIds: string[] } | null;
+  // Mirrors core/schema.ts's PostProgress: `sent` is keyed by GitHub's own ids and
+  // survives a re-draft; `review` is keyed by this draft's finding ids and does not.
   postProgress: {
-    repliesPosted: string[]; threadsResolved: string[];
+    sent: { repliedTargets: number[]; resolvedThreads: string[] };
+    review: { pendingReviewId: string | null; threadsAdded: string[]; threadsFailed: string[] };
     reviewPosted: boolean; reviewerRequested: boolean;
-    pendingReviewId: string | null; threadsAdded: string[]; threadsFailed: string[];
   } | null;
   postVerdict?: "approve" | "comment";
   error: { step: string; message: string } | null;

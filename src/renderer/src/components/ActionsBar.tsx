@@ -18,9 +18,9 @@ interface ActionsBarProps {
   postVerdict?: Verdict;
   /** True once a post is in flight or has partly landed on GitHub (mirrors
    *  api.ts's draftLocked, same prop FindingCard/VerifyCard take). Sending
-   *  feedback now would regenerate the draft and, with it, erase the
-   *  repliesPosted/threadsResolved ledger that keeps a retried post from
-   *  posting a reply GitHub already has. */
+   *  feedback now would regenerate the draft mid-cycle: the new findings would
+   *  not match the threads already attached to the pending review, and starting a
+   *  fresh one orphans that review on the PR. */
   locked?: boolean;
   onApprove: (verdict: Verdict) => void;
   onDismiss: () => void;

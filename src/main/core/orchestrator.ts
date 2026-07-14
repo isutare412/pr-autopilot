@@ -2,8 +2,12 @@ import { Store } from "./store";
 import { JobQueue } from "./queue";
 import { Gh, SearchPr } from "./gh";
 import { execute, forceApprove } from "./executor";
+import { hasUnspentLedger } from "./api";
 import { decideWork, authorAwaitingReview, keysToProbe } from "./poller";
-import { PrRecord, Draft, Mode, Language, Effort, OperatingMode, prKey } from "./schema";
+import {
+  PrRecord, Draft, Mode, Language, Effort, OperatingMode, PostProgress,
+  prKey, emptyPostProgress,
+} from "./schema";
 
 export interface OrchestratorDeps {
   store: Store;
@@ -20,6 +24,44 @@ export interface OrchestratorDeps {
   operatingMode: () => OperatingMode;
   repoAllow?: () => string[];
   repoDeny?: () => string[];
+}
+
+/** Shown on a record whose post cycle stalled half-landed and can no longer be
+ *  regenerated automatically (see hasUnspentLedger). It is an ERROR, not a silent
+ *  STALE, so the user gets the two escapes the UI already offers from ERROR —
+ *  Retry post and force-approve — plus the option of clearing the draft review on
+ *  GitHub by hand. */
+export const POST_STALLED_MID_CYCLE =
+  "Part of this review already posted to GitHub (a reply, a resolved thread, or a draft review) " +
+  "and the PR has moved on since — its head commit changed, so the rest can't be posted against " +
+  "this draft, and re-drafting would duplicate what already landed. Retry the post, force-approve " +
+  "to finish with a bare LGTM, or discard the draft review on GitHub and start over.";
+
+/** What a fresh draft inherits from the post cycle it replaces.
+ *
+ *  - The SENT half (replies posted, threads resolved) is keyed by GitHub's own ids
+ *    and describes mutations that are on the PR *permanently*. A re-draft does not
+ *    un-post them, so it must not forget them either — dropping this ledger is what
+ *    let a resumed post reply a second time to a thread that already had our reply.
+ *    It survives, so the next post skips those threads by their GitHub ids even
+ *    though the new draft gave them brand-new local ids.
+ *  - The REVIEW half (pendingReviewId, threadsAdded/threadsFailed) is keyed by the
+ *    *old* draft's finding ids and points at a pending review the new findings have
+ *    nothing to do with. It is meaningless now, so it resets. (That reset is exactly
+ *    why regeneration is refused while the ledger is unspent: it would orphan a real
+ *    pending review. See hasUnspentLedger.)
+ *  - A *spent* cycle (reviewPosted) starts the next one clean. Its replies belong to
+ *    a review that already landed; a later re-review must be free to reply to those
+ *    same threads again. */
+function carryLedger(prev: PostProgress | null): PostProgress | null {
+  if (!prev || prev.reviewPosted) return null;
+  return {
+    ...emptyPostProgress(),
+    sent: {
+      repliedTargets: [...prev.sent.repliedTargets],
+      resolvedThreads: [...prev.sent.resolvedThreads],
+    },
+  };
 }
 
 export class Orchestrator {
@@ -110,12 +152,11 @@ export class Orchestrator {
         const updated: PrRecord = {
           ...rec, draft, state: "NEEDS_REVIEW", draftVersion: rec.draftVersion + 1,
           headSha, generatedAt: this.d.nowIso(), updatedAt: this.d.nowIso(), error: null,
-          // A fresh draft begins a new post cycle: clear the previous cycle's post
-          // state. postProgress is the executor's per-post idempotency ledger — if a
-          // prior review's `reviewPosted`/`reviewerRequested` leaked through, execute()
-          // would skip posting this draft's findings as "already done". postResult
-          // (stale review URL) and postVerdict (stale disposition) go with it.
-          postProgress: null, postResult: null, postVerdict: undefined,
+          // A fresh draft begins a new post cycle. postResult (stale review URL) and
+          // postVerdict (stale disposition) belong to the old one and go. What happens
+          // to the ledger is the whole reason PostProgress has two halves:
+          postProgress: carryLedger(rec.postProgress),
+          postResult: null, postVerdict: undefined,
         };
         this.store.put(updated);
         if (this.d.operatingMode() === "automated") {
@@ -157,16 +198,29 @@ export class Orchestrator {
         const updated = await execute(this.d.gh, rec, this.d.login, this.d.nowIso(),
           (p) => { const cur = this.store.get(key); if (cur) this.store.put({ ...cur, postProgress: p }); });
         this.store.put(updated);
-        if (updated.state === "STALE") this.enqueueGen(key);
+        if (updated.state === "STALE") {
+          // execute() returns STALE by spreading `rec`, so an unspent postProgress
+          // survives into the STALE record. Regenerating it here — the recovery that
+          // normally catches the draft up to the head the author just pushed — would
+          // orphan the pending review we opened and re-post against threads we've
+          // already replied to. Nothing automatic can untangle that, so surface it as
+          // an actionable ERROR instead of stalling silently.
+          if (hasUnspentLedger(updated)) {
+            this.store.put({ ...updated, state: "ERROR",
+              error: { step: "post", message: POST_STALLED_MID_CYCLE }, updatedAt: this.d.nowIso() });
+          } else {
+            this.enqueueGen(key);
+          }
+        }
         else if (auto && (updated.state === "DONE" || updated.state === "POSTED_AWAITING_AUTHOR"))
           await this.d.notifier.send("PR Autopilot", `Posted review: ${rec.repo} #${rec.number}`, rec.url);
       } catch (e) {
-        // Re-read: execute()'s onProgress callback may have persisted postProgress
-        // (pendingReviewId, threadsAdded, threadsFailed, …) after `rec` was snapshotted
-        // above. Spreading the stale `rec` here would discard that progress and leave
-        // the app unaware of an already-created pending review (and pre-existing
-        // repliesPosted/threadsResolved), risking an orphaned review and duplicate
-        // replies on retry. Fall back to `rec` only if the record vanished entirely.
+        // Re-read: execute()'s onProgress callback may have persisted postProgress —
+        // both halves — after `rec` was snapshotted above. Spreading the stale `rec`
+        // here would discard that progress and leave the app unaware of an
+        // already-created pending review (review half) and of the replies and resolves
+        // already sent (sent half), risking an orphaned review and duplicate replies on
+        // retry. Fall back to `rec` only if the record vanished entirely.
         const cur = this.store.get(key) ?? rec;
         this.store.put({ ...cur, state: "ERROR", error: { step: "post", message: String(e) }, updatedAt: this.d.nowIso() });
       }

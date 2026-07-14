@@ -39,18 +39,19 @@ const DRAFT_LOCKED_MESSAGE =
  *  has actually landed on (or been opened against) GitHub — a reply posted, a
  *  thread resolved, a pending review created, or a finding attached to (or
  *  folded into) it — and that review hasn't been submitted yet. Mirrors
- *  api.ts's draftLocked exactly — see that copy for the full rationale (kept
- *  here as a separate literal, not imported, for the same reason as
- *  DRAFT_LOCKED_MESSAGE above). test/draftLocked-parity.test.ts pins the two
- *  copies together, the same way test/queueSort-parity.test.ts and
- *  test/guard-shim.test.ts pin their own hand-synced pairs. */
+ *  api.ts's draftLocked exactly (POSTING, plus its hasUnspentLedger arms) — see
+ *  that copy for the full rationale (kept here as a separate literal, not
+ *  imported, for the same reason as DRAFT_LOCKED_MESSAGE above).
+ *  test/renderer/draftLocked-parity.test.tsx pins the two copies together, the
+ *  same way test/queueSort-parity.test.ts and test/guard-shim.test.ts pin their
+ *  own hand-synced pairs. */
 export function draftLocked(record: UiRecord): boolean {
   if (record.state === "POSTING") return true;
   const p = record.postProgress;
   return !!p && !p.reviewPosted &&
-    (p.pendingReviewId != null ||
-     p.repliesPosted.length > 0 || p.threadsResolved.length > 0 ||
-     p.threadsAdded.length > 0 || p.threadsFailed.length > 0);
+    (p.review.pendingReviewId != null ||
+     p.sent.repliedTargets.length > 0 || p.sent.resolvedThreads.length > 0 ||
+     p.review.threadsAdded.length > 0 || p.review.threadsFailed.length > 0);
 }
 
 function LockedBanner() {
@@ -61,6 +62,29 @@ function LockedBanner() {
         <path d="M8 11V8a4 4 0 0 1 8 0v3" />
       </svg>
       <span>{DRAFT_LOCKED_MESSAGE}</span>
+    </div>
+  );
+}
+
+/** The failure that ended the last post, shown above the draft it belongs to.
+ *  Without this a record whose post half-landed and then stalled (the head moved
+ *  on, so it can no longer be re-drafted) reads as a plain "Retry post" — the
+ *  message explaining what happened, and which escapes are left, only ever
+ *  rendered on records that have no draft at all. Same banner form as
+ *  LockedBanner, which keeps its own place beneath: this one says what went
+ *  wrong, that one says why the draft can no longer be edited. */
+function PostErrorBanner({ step, message }: { step: string; message: string }) {
+  return (
+    <div className="locked-banner" role="alert">
+      <svg className="locked-banner__icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+        <path d="M12 3.8 2.6 20.2h18.8L12 3.8Z" />
+        <path d="M12 10v4" />
+        <path d="M12 17.4h.01" />
+      </svg>
+      <span>
+        <span className="locked-banner__step">{step}</span>
+        {message}
+      </span>
     </div>
   );
 }
@@ -142,6 +166,7 @@ export function Detail({ record, onToggle, onEdit, onApprove, onForceApprove, on
 
   const { draft } = record;
   const locked = draftLocked(record);
+  const postError = record.state === "ERROR" ? record.error : null;
 
   return (
     <>
@@ -150,6 +175,7 @@ export function Detail({ record, onToggle, onEdit, onApprove, onForceApprove, on
         className="overall"
         dangerouslySetInnerHTML={{ __html: mdLite(draft.overallEn) }}
       />
+      {postError && <PostErrorBanner step={postError.step} message={postError.message} />}
       {locked && <LockedBanner />}
       {draft.verify.length > 0 && (
         <>

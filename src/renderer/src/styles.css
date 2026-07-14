@@ -1112,6 +1112,16 @@ body {
   color: var(--crit);
 }
 
+/* Names the step that failed, in the same mono eyebrow the full-page error box
+   uses — so a post error reads the same wherever it surfaces. */
+.locked-banner__step {
+  margin-right: 8px;
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--crit);
+}
+
 /* ---- Sticky actions bar ---- */
 
 .actions {

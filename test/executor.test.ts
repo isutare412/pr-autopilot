@@ -122,10 +122,29 @@ function ghReconcile(
   return { gh: new Gh(rec, "github.com"), rec };
 }
 
-function progressWith(over: Partial<PostProgress> = {}): PostProgress {
+/** Flat over-rides onto the two-half PostProgress, so a test can say what landed
+ *  without spelling out both halves. `repliedTargets` are GitHub reply-target
+ *  database ids and `resolvedThreads` GitHub thread node ids — never local ids. */
+interface ProgressOver {
+  repliedTargets?: number[];
+  resolvedThreads?: string[];
+  pendingReviewId?: string | null;
+  threadsAdded?: string[];
+  threadsFailed?: string[];
+  reviewPosted?: boolean;
+  reviewerRequested?: boolean;
+}
+
+function progressWith(o: ProgressOver = {}): PostProgress {
   return {
-    repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
-    pendingReviewId: null, threadsAdded: [], threadsFailed: [], ...over,
+    sent: { repliedTargets: o.repliedTargets ?? [], resolvedThreads: o.resolvedThreads ?? [] },
+    review: {
+      pendingReviewId: o.pendingReviewId ?? null,
+      threadsAdded: o.threadsAdded ?? [],
+      threadsFailed: o.threadsFailed ?? [],
+    },
+    reviewPosted: o.reviewPosted ?? false,
+    reviewerRequested: o.reviewerRequested ?? false,
   };
 }
 
@@ -346,10 +365,7 @@ describe("execute", () => {
   it("resumes without re-posting the review when postProgress.reviewPosted is set", async () => {
     const { gh, rec } = ghWith("SHA1");
     const r = baseRec();
-    r.postProgress = {
-      repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: false,
-      pendingReviewId: null, threadsAdded: [], threadsFailed: [],
-    };
+    r.postProgress = progressWith({ reviewPosted: true });
     r.postResult = { reviewUrl: "http://existing/r/1", postedAt: "t", resolvedThreadIds: [] };
     const out = await execute(gh, r, "me", "2026-06-29T00:00:00Z");
     expect(rec.calls.some((c) => c.args.some((a) => a.includes("/reviews")))).toBe(false);
@@ -507,10 +523,7 @@ describe("execute → pending-review flow", () => {
       return "{}";
     });
     const r = baseRec();
-    r.postProgress = {
-      repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
-      pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: [],
-    };
+    r.postProgress = progressWith({ pendingReviewId: "PRR_1", threadsAdded: ["f1"] });
     await execute(new Gh(rec, "github.com"), r, "me", "2026-07-14T00:00:00Z");
     expect(threadCalls(rec).length).toBe(0);                                    // f1 already in
     expect(rec.calls.some((c) => c.args.join(" ").includes("addPullRequestReview(input"))).toBe(false);
@@ -531,10 +544,7 @@ describe("execute → pending-review flow", () => {
         anchorable: true, priority: "Nit", body: "**[Nit]** name", suggestion: null,
         included: true, editedBody: null },
     ];
-    r.postProgress = {
-      repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
-      pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: [],
-    };
+    r.postProgress = progressWith({ pendingReviewId: "PRR_1", threadsAdded: ["f1"] });
     await execute(gh, r, "me", "2026-07-14T00:00:00Z");
     const threads = threadCalls(rec);
     expect(threads.length).toBe(1);
@@ -544,9 +554,9 @@ describe("execute → pending-review flow", () => {
   it("persists pendingReviewId and threadsAdded as it goes", async () => {
     const { gh } = ghWith("SHA1");
     const saved: PostProgress[] = [];
-    await execute(gh, baseRec(), "me", "2026-07-14T00:00:00Z", (p) => saved.push({ ...p, threadsAdded: [...p.threadsAdded] }));
-    expect(saved.some((p) => p.pendingReviewId === "PRR_1")).toBe(true);
-    expect(saved.some((p) => p.threadsAdded.includes("f1"))).toBe(true);
+    await execute(gh, baseRec(), "me", "2026-07-14T00:00:00Z", (p) => saved.push(structuredClone(p)));
+    expect(saved.some((p) => p.review.pendingReviewId === "PRR_1")).toBe(true);
+    expect(saved.some((p) => p.review.threadsAdded.includes("f1"))).toBe(true);
     expect(saved[saved.length - 1].reviewPosted).toBe(true);
   });
 });
@@ -611,8 +621,8 @@ describe("execute → fallback ladder", () => {
     expect(threads.map((t) => argValue(t, "subject"))).toEqual(["LINE", "FILE"]);
     expect(argValue(threads[1], "body")).toContain("line 142");   // the FILE body names the line
     expect(argValue(submitCall(rec)!, "body")).not.toContain("a.go:142");  // not folded — it landed
-    expect(out.postProgress?.threadsAdded).toEqual(["f1"]);
-    expect(out.postProgress?.threadsFailed).toEqual([]);
+    expect(out.postProgress?.review.threadsAdded).toEqual(["f1"]);
+    expect(out.postProgress?.review.threadsFailed).toEqual([]);
   });
 
   it("a finding refused as both LINE and FILE is folded into the submit body", async () => {
@@ -622,8 +632,8 @@ describe("execute → fallback ladder", () => {
     expect(threadCalls(rec).map((t) => argValue(t, "subject"))).toEqual(["LINE", "FILE"]);
     const body = argValue(submitCall(rec)!, "body")!;
     expect(body).toContain("a.go:142 — **[Critical]** leak");     // the last-resort fold
-    expect(out.postProgress?.threadsFailed).toEqual(["f1"]);
-    expect(out.postProgress?.threadsAdded).toEqual([]);
+    expect(out.postProgress?.review.threadsFailed).toEqual(["f1"]);
+    expect(out.postProgress?.review.threadsAdded).toEqual([]);
   });
 
   it("a non-validation error propagates instead of degrading the review into body text", async () => {
@@ -638,10 +648,7 @@ describe("execute → fallback ladder", () => {
     // same draft — the failed finding must not be lost on the way to submit.
     const { gh, rec } = ghFailingThreads(() => null, "PRR_1");
     const r = baseRec();
-    r.postProgress = {
-      repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
-      pendingReviewId: "PRR_1", threadsAdded: [], threadsFailed: ["f1"],
-    };
+    r.postProgress = progressWith({ pendingReviewId: "PRR_1", threadsFailed: ["f1"] });
     await execute(gh, r, "me", "2026-07-14T00:00:00Z");
     expect(threadCalls(rec).length).toBe(0);                       // f1 already known-failed; not retried
     expect(argValue(submitCall(rec)!, "body")).toContain("a.go:142 — **[Critical]** leak");
@@ -659,12 +666,65 @@ describe("isDiffRejection", () => {
   });
 });
 
+/** The sent half of the ledger is keyed by GitHub's ids, not ours — so it still
+ *  matches after a re-draft has renamed every local id. */
+describe("execute → the sent ledger is keyed by GitHub's ids", () => {
+  const verifyItem = (id: string, verdict: "resolve" | "follow-up") => ({
+    id, ref: "V1", threadNodeId: "N1", replyTargetDatabaseId: 111, path: "a.go", line: 1,
+    verdict, rationaleEn: "x", replyBody: "**[Major]** still open", included: true, editedBody: null,
+  });
+  const replies = (rec: Recorder) =>
+    rec.calls.filter((c) => c.args.some((a) => a.includes("/comments/111/replies")));
+
+  it("skips a reply whose replyTargetDatabaseId is already in the ledger, even under a brand-new local id", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const r = baseRec({ mode: "re-review" });
+    r.draft!.findings = [];
+    // The re-draft minted a fresh local id for the same GitHub thread…
+    r.draft!.verify = [verifyItem("v-REGENERATED", "follow-up")];
+    // …and the ledger carried over from the cycle that already replied to it.
+    r.postProgress = progressWith({ repliedTargets: [111] });
+
+    const out = await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+
+    expect(replies(rec).length).toBe(0);                      // not re-sent
+    expect(out.postProgress!.sent.repliedTargets).toEqual([111]);
+  });
+
+  it("skips a resolve whose threadNodeId is already in the ledger, and reports it as resolved", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const r = baseRec({ mode: "re-review" });
+    r.draft!.findings = [];
+    r.draft!.verify = [verifyItem("v-REGENERATED", "resolve")];
+    r.postProgress = progressWith({ repliedTargets: [111], resolvedThreads: ["N1"] });
+
+    const out = await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+
+    expect(rec.calls.some((c) => c.args.includes("threadId=N1"))).toBe(false);   // not re-resolved
+    // postResult reads straight off the ledger, so a thread resolved by an earlier
+    // attempt of this cycle is still reported as resolved.
+    expect(out.postResult?.resolvedThreadIds).toEqual(["N1"]);
+  });
+
+  it("still sends the reply when the ledger holds a different thread's target", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const r = baseRec({ mode: "re-review" });
+    r.draft!.findings = [];
+    r.draft!.verify = [verifyItem("v1", "follow-up")];
+    r.postProgress = progressWith({ repliedTargets: [999] });   // some other thread
+
+    await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+
+    expect(replies(rec).length).toBe(1);
+  });
+});
+
 describe("execute → pending-review reconciliation", () => {
   it("no stored id and no pending review on the PR → creates one", async () => {
     const { gh, rec } = ghReconcile(null);
     const out = await execute(gh, baseRec(), "me", "2026-07-14T00:00:00Z");
     expect(createCall(rec)).toBeDefined();
-    expect(out.postProgress?.pendingReviewId).toBe("PRR_new");
+    expect(out.postProgress?.review.pendingReviewId).toBe("PRR_new");
   });
 
   it("stored id still PENDING → resumes into it, creates nothing", async () => {
@@ -698,14 +758,14 @@ describe("execute → pending-review reconciliation", () => {
     r.draft!.findings[1].included = true;   // include f2 too, so a stale threadsFailed entry is exercised
     r.postProgress = progressWith({ pendingReviewId: "PRR_dead", threadsAdded: ["f1"], threadsFailed: ["f2"] });
     const out = await execute(gh, r, "me", "2026-07-14T00:00:00Z");
-    expect(out.postProgress?.pendingReviewId).toBe("PRR_new");
+    expect(out.postProgress?.review.pendingReviewId).toBe("PRR_new");
     // the discarded draft took its threads with it — both f1 and f2 must be re-added as
     // threads, not skipped (a stale threadsAdded) or folded into the submit body (a stale
     // threadsFailed, which would silently reintroduce the bug this branch fixes)
     const threads = threadCalls(rec);
     expect(threads.length).toBe(2);
-    expect([...out.postProgress!.threadsAdded].sort()).toEqual(["f1", "f2"]);
-    expect(out.postProgress?.threadsFailed).toEqual([]);
+    expect([...out.postProgress!.review.threadsAdded].sort()).toEqual(["f1", "f2"]);
+    expect(out.postProgress?.review.threadsFailed).toEqual([]);
     expect(argValue(submitCall(rec)!, "body")).not.toContain("b.go:9");   // not folded — landed as a thread
   });
 

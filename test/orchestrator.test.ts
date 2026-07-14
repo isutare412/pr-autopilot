@@ -3,8 +3,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../src/main/core/store";
-import { Orchestrator } from "../src/main/core/orchestrator";
-import type { Draft, PrRecord } from "../src/main/core/schema";
+import { Orchestrator, POST_STALLED_MID_CYCLE } from "../src/main/core/orchestrator";
+import type { Draft, PrRecord, VerifyItem } from "../src/main/core/schema";
 
 const draft: Draft = { overallEn: "o", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
 
@@ -91,8 +91,9 @@ describe("Orchestrator", () => {
     const key = seed(store, 41, "POSTED_AWAITING_AUTHOR", {
       draft, draftVersion: 1, mode: "re-review",
       postProgress: {
-        repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: true,
-        pendingReviewId: null, threadsAdded: [], threadsFailed: [],
+        sent: { repliedTargets: [], resolvedThreads: [] },
+        review: { pendingReviewId: null, threadsAdded: [], threadsFailed: [] },
+        reviewPosted: true, reviewerRequested: true,
       },
       postResult: { reviewUrl: "http://x/r/first", postedAt: "t", resolvedThreadIds: [] },
       postVerdict: "comment",
@@ -219,8 +220,9 @@ describe("runForceApprove", () => {
     const { orch, store } = mkOrch();
     const key = seed(store, 50, "POSTING", { draft, draftVersion: 1, forceApprove: true,
       postProgress: {
-        repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: true,
-        pendingReviewId: null, threadsAdded: [], threadsFailed: [],
+        sent: { repliedTargets: [], resolvedThreads: [] },
+        review: { pendingReviewId: null, threadsAdded: [], threadsFailed: [] },
+        reviewPosted: true, reviewerRequested: true,
       } });
     await orch.runForceApprove(key);
     const rec = store.get(key)!;
@@ -384,8 +386,8 @@ describe("Orchestrator — automated mode", () => {
     // The bug: spreading the pre-execute `rec` snapshot instead of re-reading the
     // store would wipe these back to the initial empty progress (null pendingReviewId,
     // empty threadsAdded), losing track of the orphaned pending review.
-    expect(rec.postProgress?.pendingReviewId).toBe("PRR_1");
-    expect(rec.postProgress?.threadsAdded).toEqual(["f1"]);
+    expect(rec.postProgress?.review.pendingReviewId).toBe("PRR_1");
+    expect(rec.postProgress?.review.threadsAdded).toEqual(["f1"]);
   });
 });
 
@@ -453,5 +455,152 @@ describe("Orchestrator — live settings", () => {
     await orch.runPoll();
     expect(allow).toHaveBeenCalled();
     expect(deny).toHaveBeenCalled();
+  });
+});
+
+/** The class of bug this whole split exists to kill: a draft regenerated in the
+ *  middle of a post cycle used to take the idempotency ledger down with it, so the
+ *  next post re-sent replies GitHub already had. The sent half is keyed by GitHub's
+ *  own ids and now survives a re-draft; the review half, keyed by the old draft's
+ *  finding ids, does not. */
+describe("Orchestrator — the post ledger across a re-draft", () => {
+  /** Same GitHub thread (N1 / reply target 111) in two different drafts, wearing a
+   *  different *local* id each time — exactly what a regeneration produces. */
+  const verify = (id: string): VerifyItem => ({
+    id, ref: "V1", threadNodeId: "N1", replyTargetDatabaseId: 111, path: "a.go", line: 1,
+    verdict: "follow-up", rationaleEn: "still open", replyBody: "**[Major]** still open",
+    included: true, editedBody: null,
+  });
+  const draftWith = (v: VerifyItem): Draft => ({
+    overallEn: "o", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [v],
+  });
+
+  it("carries the sent half into the new draft, so a reply already on GitHub is not sent twice", async () => {
+    const { orch, store } = mkOrch();
+    const gh = (orch as any).d.gh;
+    gh.postReply = vi.fn(async () => {});
+
+    // A cycle that landed the reply to thread 111 and then died before the review.
+    const key = seed(store, 80, "ERROR", {
+      draft: draftWith(verify("v1")), draftVersion: 1, mode: "re-review", headSha: "SHA1",
+      postProgress: {
+        sent: { repliedTargets: [111], resolvedThreads: [] },
+        review: { pendingReviewId: null, threadsAdded: [], threadsFailed: [] },
+        reviewPosted: false, reviewerRequested: false,
+      },
+    });
+
+    // The draft is regenerated. The same GitHub thread comes back with a *new* local id.
+    orch.generate = vi.fn(async () => draftWith(verify("v-REGENERATED")));
+    await orch.runGeneration(key, "re-review", { url: "http://x/O/R/pull/80", owner: "O", repo: "R", number: 80, title: "t" });
+
+    const regenerated = store.get(key)!;
+    expect(regenerated.state).toBe("NEEDS_REVIEW");
+    expect(regenerated.draft!.verify[0].id).toBe("v-REGENERATED");   // a genuinely new local id…
+    expect(regenerated.postProgress!.sent.repliedTargets).toEqual([111]);   // …but GitHub's id is remembered
+    // the review half belongs to the old draft's findings and is reset
+    expect(regenerated.postProgress!.review).toEqual({ pendingReviewId: null, threadsAdded: [], threadsFailed: [] });
+
+    await orch.runPost(key);
+
+    expect(gh.postReply).not.toHaveBeenCalled();   // the reply GitHub already has is not re-sent
+  });
+
+  it("a SPENT cycle (reviewPosted) starts the next one clean, so a re-review can reply to the same thread again", async () => {
+    const { orch, store } = mkOrch();
+    const gh = (orch as any).d.gh;
+    gh.postReply = vi.fn(async () => {});
+
+    // The previous cycle completed: its reply belongs to a review that already landed.
+    const key = seed(store, 81, "POSTED_AWAITING_AUTHOR", {
+      draft: draftWith(verify("v1")), draftVersion: 1, mode: "re-review", headSha: "SHA1",
+      postProgress: {
+        sent: { repliedTargets: [111], resolvedThreads: ["N1"] },
+        review: { pendingReviewId: null, threadsAdded: [], threadsFailed: [] },
+        reviewPosted: true, reviewerRequested: true,
+      },
+    });
+
+    orch.generate = vi.fn(async () => draftWith(verify("v2")));
+    await orch.runGeneration(key, "re-review", { url: "http://x/O/R/pull/81", owner: "O", repo: "R", number: 81, title: "t" });
+
+    expect(store.get(key)!.postProgress).toBeNull();   // spent → the next cycle starts from scratch
+
+    await orch.runPost(key);
+
+    expect(gh.postReply).toHaveBeenCalledTimes(1);   // the new round of review may speak in that thread again
+    expect(store.get(key)!.postProgress!.sent.repliedTargets).toEqual([111]);
+  });
+});
+
+/** The round-4 hole: execute() returns STALE by spreading `rec`, so an unspent
+ *  postProgress rides along into the STALE record — and runPost's STALE recovery
+ *  used to hand that straight to enqueueGen. */
+describe("Orchestrator — runPost STALE recovery is gated on the ledger", () => {
+  const findingDraft = (): Draft => ({
+    overallEn: "o", counts: { critical: 1, major: 0, minor: 0, nit: 0 },
+    findings: [{ id: "f1", ref: "#1", path: "a.go", line: 10, side: "RIGHT", startLine: null,
+      startSide: null, anchorable: true, priority: "Critical", body: "**[Critical]** leak",
+      suggestion: null, included: true, editedBody: null }],
+    verify: [{ id: "v1", ref: "V1", threadNodeId: "N1", replyTargetDatabaseId: 111, path: "a.go",
+      line: 1, verdict: "follow-up", rationaleEn: "open", replyBody: "**[Major]** open",
+      included: true, editedBody: null }],
+  });
+
+  it("a half-landed post + an author push → no regeneration, an actionable error instead", async () => {
+    const { orch, store } = mkOrch();
+    const gh = (orch as any).d.gh;
+    const genSpy = vi.fn();
+
+    gh.prStatus = async () => ({ state: "OPEN", headSha: "SHA1", nodeId: "PR_node1" });
+    gh.postReply = vi.fn(async () => {});
+    gh.resolveThread = vi.fn(async () => {});
+    gh.findPendingReview = async () => null;
+    gh.createPendingReview = async () => "PRR_1";
+    gh.addReviewThread = async () => {};
+    gh.submitReview = async () => { throw new Error("submit boom"); };
+
+    const key = seed(store, 90, "POSTING", { draft: findingDraft(), draftVersion: 1, headSha: "SHA1", mode: "re-review" });
+
+    // 1. The post partly lands: the reply goes out, then the submit fails.
+    await orch.runPost(key);
+    const errored = store.get(key)!;
+    expect(errored.state).toBe("ERROR");
+    expect(gh.postReply).toHaveBeenCalledTimes(1);
+    expect(errored.postProgress!.sent.repliedTargets).toEqual([111]);
+
+    // 2. The author pushes while we sit in ERROR.
+    gh.prStatus = async () => ({ state: "OPEN", headSha: "SHA2", nodeId: "PR_node1" });
+    gh.headSha = async () => "SHA2";
+
+    // 3. The user hits Retry post. execute() sees the moved head and returns STALE.
+    (orch as any).enqueueGen = genSpy;
+    await orch.runPost(key);
+
+    // The bug: STALE used to enqueue a regeneration, which would drop the pending
+    // review we opened (orphaning it on the PR) and re-post the reply already sent.
+    expect(genSpy).not.toHaveBeenCalled();
+
+    const stalled = store.get(key)!;
+    expect(stalled.state).toBe("ERROR");                       // an escapable state, not a silent STALE
+    expect(stalled.error).toEqual({ step: "post", message: POST_STALLED_MID_CYCLE });
+    expect(stalled.postProgress!.sent.repliedTargets).toEqual([111]);   // the ledger is intact
+    expect(gh.postReply).toHaveBeenCalledTimes(1);             // and nothing was re-sent
+  });
+
+  it("still regenerates a STALE record whose ledger is empty — the ordinary catch-up path", async () => {
+    const { orch, store } = mkOrch();
+    const gh = (orch as any).d.gh;
+    const genSpy = vi.fn();
+    (orch as any).enqueueGen = genSpy;
+
+    // Nothing has landed: a plain approve whose head moved before the first mutation.
+    gh.prStatus = async () => ({ state: "OPEN", headSha: "SHA2", nodeId: "PR_node1" });
+    const key = seed(store, 91, "POSTING", { draft, draftVersion: 1, headSha: "SHA1" });
+
+    await orch.runPost(key);
+
+    expect(genSpy).toHaveBeenCalledWith(key);
+    expect(store.get(key)!.state).toBe("STALE");
   });
 });

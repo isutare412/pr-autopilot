@@ -490,8 +490,9 @@ describe("Detail — locked draft (postProgress carries an unposted pending revi
   it("disables the toggle and shows the locked reason when a pending review holds attached findings", () => {
     render(
       <Detail
-        record={findingsRec({ repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
-          pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: [] })}
+        record={findingsRec({ sent: { repliedTargets: [], resolvedThreads: [] },
+          review: { pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: [] },
+          reviewPosted: false, reviewerRequested: false })}
         onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop}
         onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop}
       />,
@@ -503,8 +504,9 @@ describe("Detail — locked draft (postProgress carries an unposted pending revi
   it("leaves the toggle enabled once the review has been submitted", () => {
     render(
       <Detail
-        record={findingsRec({ repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: false,
-          pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: [] })}
+        record={findingsRec({ sent: { repliedTargets: [], resolvedThreads: [] },
+          review: { pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: [] },
+          reviewPosted: true, reviewerRequested: false })}
         onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop}
         onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop}
       />,
@@ -527,8 +529,9 @@ describe("Detail — locked draft (postProgress carries an unposted pending revi
   it("disables the toggle and the feedback Send control when a pending review exists with nothing attached yet (FINDING C-1)", () => {
     render(
       <Detail
-        record={findingsRec({ repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
-          pendingReviewId: "PRR_1", threadsAdded: [], threadsFailed: [] })}
+        record={findingsRec({ sent: { repliedTargets: [], resolvedThreads: [] },
+          review: { pendingReviewId: "PRR_1", threadsAdded: [], threadsFailed: [] },
+          reviewPosted: false, reviewerRequested: false })}
         onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop}
         onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop}
       />,
@@ -540,8 +543,9 @@ describe("Detail — locked draft (postProgress carries an unposted pending revi
   it("disables the feedback Send control whenever the toggle is disabled (FINDING I-2)", () => {
     render(
       <Detail
-        record={findingsRec({ repliesPosted: ["v1"], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
-          pendingReviewId: null, threadsAdded: [], threadsFailed: [] })}
+        record={findingsRec({ sent: { repliedTargets: [111], resolvedThreads: [] },
+          review: { pendingReviewId: null, threadsAdded: [], threadsFailed: [] },
+          reviewPosted: false, reviewerRequested: false })}
         onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop}
         onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop}
       />,
@@ -552,8 +556,9 @@ describe("Detail — locked draft (postProgress carries an unposted pending revi
   it("leaves the feedback Send control gated only by empty text once the review has been submitted", () => {
     render(
       <Detail
-        record={findingsRec({ repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: false,
-          pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: [] })}
+        record={findingsRec({ sent: { repliedTargets: [], resolvedThreads: [] },
+          review: { pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: [] },
+          reviewPosted: true, reviewerRequested: false })}
         onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop}
         onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop}
       />,
@@ -563,6 +568,26 @@ describe("Detail — locked draft (postProgress carries an unposted pending revi
     expect(send).toBeDisabled();   // empty text, not locked
     fireEvent.change(ta, { target: { value: "one more pass" } });
     expect(send).toBeEnabled();
+  });
+
+  /** A record whose post half-landed and then stalled can no longer be re-drafted,
+   *  so the message naming the escapes is the only way out. It used to be rendered
+   *  only on records with no draft — i.e. never on this one. */
+  it("surfaces the post error message on a record that still has a draft, alongside Retry post", () => {
+    const rec = findingsRec({
+      sent: { repliedTargets: [111], resolvedThreads: [] },
+      review: { pendingReviewId: "PRR_1", threadsAdded: [], threadsFailed: [] },
+      reviewPosted: false, reviewerRequested: false,
+    });
+    render(
+      <Detail
+        record={{ ...rec, error: { step: "post", message: "part of this review already posted — force-approve or discard the draft review on GitHub" } }}
+        onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop}
+        onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/force-approve or discard the draft review on GitHub/i);
+    expect(screen.getByRole("button", { name: /retry post/i })).toBeInTheDocument();
   });
 });
 

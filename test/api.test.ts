@@ -46,10 +46,22 @@ describe("api", () => {
     expect(deps.store.get("github.com/O/R#65")!.draft!.findings[0].editedBody).toBe("**[Nit]** edited");
   });
 
-  function progress(over: Partial<PostProgress> = {}): PostProgress {
+  /** Flat over-rides onto the two-half PostProgress. `repliedTargets` are GitHub
+   *  reply-target database ids, `resolvedThreads` GitHub thread node ids. */
+  function progress(o: {
+    repliedTargets?: number[]; resolvedThreads?: string[];
+    pendingReviewId?: string | null; threadsAdded?: string[]; threadsFailed?: string[];
+    reviewPosted?: boolean; reviewerRequested?: boolean;
+  } = {}): PostProgress {
     return {
-      repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
-      pendingReviewId: null, threadsAdded: [], threadsFailed: [], ...over,
+      sent: { repliedTargets: o.repliedTargets ?? [], resolvedThreads: o.resolvedThreads ?? [] },
+      review: {
+        pendingReviewId: o.pendingReviewId ?? null,
+        threadsAdded: o.threadsAdded ?? [],
+        threadsFailed: o.threadsFailed ?? [],
+      },
+      reviewPosted: o.reviewPosted ?? false,
+      reviewerRequested: o.reviewerRequested ?? false,
     };
   }
 
@@ -95,13 +107,13 @@ describe("api", () => {
   it("draftLocked is true once a reply has posted, even with no pendingReviewId (FINDING I-2)", () => {
     const { deps } = mkDeps();
     const rec = deps.store.get("github.com/O/R#65")!;
-    expect(draftLocked({ ...rec, postProgress: progress({ repliesPosted: ["v1"] }) })).toBe(true);
+    expect(draftLocked({ ...rec, postProgress: progress({ repliedTargets: [111] }) })).toBe(true);
   });
 
   it("draftLocked is true once a thread has resolved, even with no pendingReviewId (FINDING I-2)", () => {
     const { deps } = mkDeps();
     const rec = deps.store.get("github.com/O/R#65")!;
-    expect(draftLocked({ ...rec, postProgress: progress({ threadsResolved: ["v1"] }) })).toBe(true);
+    expect(draftLocked({ ...rec, postProgress: progress({ resolvedThreads: ["N1"] }) })).toBe(true);
   });
 
   it("draftLocked is true once a pending review exists on GitHub, even with nothing attached or failed yet (FINDING C-1)", () => {
@@ -120,20 +132,20 @@ describe("api", () => {
     expect(draftLocked({ ...rec, state: "POSTING", postProgress: null })).toBe(true);
   });
 
-  it("toggleItem is rejected when only repliesPosted is non-empty (no pendingReviewId)", () => {
+  it("toggleItem is rejected when only a reply has been sent (no pendingReviewId)", () => {
     const { deps } = mkDeps();
     const rec = deps.store.get("github.com/O/R#65")!;
-    rec.postProgress = progress({ repliesPosted: ["v1"] });
+    rec.postProgress = progress({ repliedTargets: [111] });
     deps.store.put(rec);
     const out = api.toggleItem(deps, "github.com/O/R#65", "#1", false);
     expect(out).toEqual({ error: DRAFT_LOCKED_MESSAGE });
     expect(deps.store.get("github.com/O/R#65")!.draft!.findings[0].included).toBe(true);
   });
 
-  it("editItem is rejected when only threadsResolved is non-empty (no pendingReviewId)", () => {
+  it("editItem is rejected when only a thread has been resolved (no pendingReviewId)", () => {
     const { deps } = mkDeps();
     const rec = deps.store.get("github.com/O/R#65")!;
-    rec.postProgress = progress({ threadsResolved: ["v1"] });
+    rec.postProgress = progress({ resolvedThreads: ["N1"] });
     deps.store.put(rec);
     const out = api.editItem(deps, "github.com/O/R#65", "#1", "edited body");
     expect(out).toEqual({ error: DRAFT_LOCKED_MESSAGE });
@@ -207,7 +219,7 @@ describe("api", () => {
   it("submitFeedback is rejected while the draft is locked, and leaves state/history untouched (FINDING I-2)", () => {
     const { deps, gens } = mkDeps();
     const rec = deps.store.get("github.com/O/R#65")!;
-    rec.postProgress = progress({ repliesPosted: ["v1"] });   // a reply already landed on GitHub
+    rec.postProgress = progress({ repliedTargets: [111] });   // a reply already landed on GitHub
     deps.store.put(rec);
     const out = api.submitFeedback(deps, "github.com/O/R#65", "drop #1");
     expect(out).toEqual({ error: DRAFT_LOCKED_MESSAGE });

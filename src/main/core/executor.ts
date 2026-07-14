@@ -1,5 +1,5 @@
 import { Gh, ReviewThreadInput } from "./gh";
-import { Draft, Finding, PrRecord, PostProgress, PostVerdict } from "./schema";
+import { Draft, Finding, PrRecord, PostProgress, PostVerdict, emptyPostProgress } from "./schema";
 
 const APPROVE_BODY = "LGTM :+1:";
 
@@ -116,23 +116,24 @@ async function reconcilePendingReview(
   gh: Gh, rec: PrRecord, login: string, prNodeId: string, commitOid: string,
   progress: PostProgress, save: () => void,
 ): Promise<Reconciled> {
-  if (progress.pendingReviewId) {
-    const stored = await gh.reviewState(progress.pendingReviewId);
-    if (stored?.state === "PENDING") return { kind: "review", reviewId: progress.pendingReviewId };
+  const review = progress.review;
+  if (review.pendingReviewId) {
+    const stored = await gh.reviewState(review.pendingReviewId);
+    if (stored?.state === "PENDING") return { kind: "review", reviewId: review.pendingReviewId };
     if (stored) return { kind: "landed", url: stored.url };
-    progress.pendingReviewId = null;   // discarded — fall through and rebuild it
-    progress.threadsAdded = [];
-    progress.threadsFailed = [];
+    review.pendingReviewId = null;   // discarded — fall through and rebuild it
+    review.threadsAdded = [];
+    review.threadsFailed = [];
   }
 
   const live = await gh.findPendingReview(rec.owner, rec.repo, rec.number, login);
   if (live) throw new Error(PENDING_REVIEW_CONFLICT);
 
-  progress.pendingReviewId = await gh.createPendingReview(prNodeId, commitOid);
-  progress.threadsAdded = [];    // a fresh draft holds none of the old threads
-  progress.threadsFailed = [];
+  review.pendingReviewId = await gh.createPendingReview(prNodeId, commitOid);
+  review.threadsAdded = [];    // a fresh draft holds none of the old threads
+  review.threadsFailed = [];
   save();
-  return { kind: "review", reviewId: progress.pendingReviewId };
+  return { kind: "review", reviewId: review.pendingReviewId };
 }
 
 /** GitHub refusing to anchor a comment — the API rejects any line outside the diff
@@ -181,29 +182,28 @@ export async function execute(
 
   const draft = rec.draft!;
   const verdict = rec.postVerdict ?? defaultVerdict(draft);
-  const progress = rec.postProgress ?? {
-    repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
-    pendingReviewId: null, threadsAdded: [], threadsFailed: [],
-  };
+  const progress = rec.postProgress ?? emptyPostProgress();
   const save = () => onProgress?.(progress);  // persist after each action → crash-safe resume
-  const resolvedThreadIds: string[] = [...progress.threadsResolved.map((id) => draft.verify.find((v) => v.id === id)?.threadNodeId).filter(Boolean) as string[]];
 
-  // 1. In-thread replies (confirm + follow-up), for included verify items with a non-empty body.
+  // 1. In-thread replies (confirm + follow-up), for included verify items with a
+  //    non-empty body. Skipped by GitHub's *own* id for the thread we'd reply to,
+  //    never by the verify item's local id: this draft may be a re-draft of the one
+  //    that posted the reply, in which case the same GitHub thread wears a brand-new
+  //    local id (see schema.ts's SentToGitHub).
   for (const v of draft.verify.filter((v) => v.included && v.verdict !== "needs-call")) {
-    if (progress.repliesPosted.includes(v.id)) continue;
+    if (progress.sent.repliedTargets.includes(v.replyTargetDatabaseId)) continue;
     const body = v.editedBody ?? v.replyBody;
     if (!body) continue;
     await gh.postReply(rec.owner, rec.repo, rec.number, v.replyTargetDatabaseId, body);
-    progress.repliesPosted.push(v.id);
+    progress.sent.repliedTargets.push(v.replyTargetDatabaseId);
     save();
   }
 
-  // 2. Resolve only the resolve-verdict threads.
+  // 2. Resolve only the resolve-verdict threads — again skipped by GitHub's thread id.
   for (const v of draft.verify.filter((v) => v.included && v.verdict === "resolve")) {
-    if (progress.threadsResolved.includes(v.id)) continue;
+    if (progress.sent.resolvedThreads.includes(v.threadNodeId)) continue;
     await gh.resolveThread(v.threadNodeId);
-    progress.threadsResolved.push(v.id);
-    resolvedThreadIds.push(v.threadNodeId);
+    progress.sent.resolvedThreads.push(v.threadNodeId);
     save();
   }
 
@@ -213,17 +213,18 @@ export async function execute(
   //    but a pendingReviewId already on the record means *we* opened a draft on
   //    GitHub at some point, so even zero current specs must reconcile with it
   //    rather than take the fast path. And when we hold no pendingReviewId at
-  //    all, that alone does not prove none exists: a re-draft nulls postProgress
-  //    (see orchestrator.runGeneration) even when an earlier PENDING review —
-  //    possibly still carrying a thread — is live on GitHub, and a user can also
-  //    hand-write one in the browser. So the zero-specs branch below asks GitHub
-  //    directly before assuming the fast path is safe, rather than inferring
-  //    "no pending review" from our own bookkeeping.
+  //    all, that alone does not prove none exists: a *spent* cycle (reviewPosted,
+  //    which execute() also sets when it had nothing to submit) can still leave a
+  //    pending review we opened live on the PR, and the next generation clears the
+  //    ledger — along with our record of it. A user can also hand-write a draft
+  //    review in the browser. So the zero-specs branch below asks GitHub directly
+  //    before assuming the fast path is safe, rather than inferring "no pending
+  //    review" from our own bookkeeping.
   let reviewUrl: string | null = rec.postResult?.reviewUrl ?? null;
   if (!progress.reviewPosted) {
     const specs = buildThreadSpecs(draft);
 
-    if (specs.length === 0 && !progress.pendingReviewId) {
+    if (specs.length === 0 && !progress.review.pendingReviewId) {
       // Build the payload before asking GitHub anything: a "comment" verdict
       // with zero findings is null — nothing is posted, so nothing can collide
       // with a pending review, ours or anyone else's. Guard only the actual
@@ -233,11 +234,11 @@ export async function execute(
       const payload = buildReviewPayload(rec, liveSha, verdict);
       if (payload) {
         if (await gh.findPendingReview(rec.owner, rec.repo, rec.number, login)) {
-          // Someone's pending review is live — ours from before a re-draft wiped
-          // our record of it, or the user's own hand-written draft. Landing a
-          // REST review beside it would violate GitHub's one-pending-review-per-
-          // user limit and, if it's our orphan, wedge every future post behind
-          // this same conflict until the user discards it by hand.
+          // Someone's pending review is live — ours from a cycle that ended without
+          // submitting it, or the user's own hand-written draft. Landing a REST
+          // review beside it would violate GitHub's one-pending-review-per-user
+          // limit and, if it's our orphan, wedge every future post behind this same
+          // conflict until the user discards it by hand.
           throw new Error(PENDING_REVIEW_CONFLICT);
         }
         const res = await gh.postReview(rec.owner, rec.repo, rec.number, payload);
@@ -255,48 +256,49 @@ export async function execute(
         // Backstop: the draft may have changed after part of it was already
         // attached — practically, a finding dropped or edited via the
         // (now-locked) toggle/edit API is the only way an id can still slip
-        // through to here. It does NOT cover a re-draft from feedback: runGeneration
-        // nulls postProgress on every successful (re)generation, so
-        // threadsAdded/threadsFailed are wiped along with it — there is no stale
-        // id left for this check to catch. What actually protects a re-draft is
-        // reconcilePendingReview finding the old PENDING review still live (or,
-        // for a clean re-draft with zero specs, the findPendingReview check in
-        // the fast path above) and throwing PENDING_REVIEW_CONFLICT — and only
-        // when specs.length > 0 routes through reconcilePendingReview at all.
-        // Runs *after* reconcile: the discarded-draft branch above legitimately
-        // resets both lists, and that reset must win.
+        // through to here. It does NOT cover a re-draft: the review half of the
+        // ledger (threadsAdded/threadsFailed/pendingReviewId) is reset by
+        // runGeneration, so no stale id survives for this check to catch. What
+        // protects a re-draft is that regeneration is *refused* while the ledger
+        // is unspent (api.hasUnspentLedger gates every entry point), and — for a
+        // pending review we opened in a cycle that ended without submitting it —
+        // reconcilePendingReview / the fast path's findPendingReview asking GitHub
+        // and throwing PENDING_REVIEW_CONFLICT. Runs *after* reconcile: the
+        // discarded-draft branch above legitimately resets both lists, and that
+        // reset must win.
         //
         // Id-stability note: this compares finding *ids* only — never bodies.
         // Ids come from the model's JSON and are not content-stable across
-        // drafts. That's sound today only because postProgress is always
-        // nulled on a re-draft and toggle/editItem are locked (draftLocked)
-        // the instant a pending review exists, closing the window (a full
-        // network round-trip between persisting pendingReviewId and the first
-        // addReviewThread) where a same-id edit could otherwise slip through:
-        // this check would see the id unchanged and pass, and execute() would
-        // then post the *old* captured body while the UI showed the *new* one
-        // as sent — id stability says nothing about content staying put. If a
-        // future change starts preserving postProgress across a re-draft, id
-        // reuse could defeat this comparison silently.
+        // drafts. That's sound only because the review half of the ledger never
+        // outlives the draft it was keyed against, and toggle/editItem are locked
+        // (draftLocked) the instant a pending review exists, closing the window (a
+        // full network round-trip between persisting pendingReviewId and the first
+        // addReviewThread) where a same-id edit could otherwise slip through: this
+        // check would see the id unchanged and pass, and execute() would then post
+        // the *old* captured body while the UI showed the *new* one as sent — id
+        // stability says nothing about content staying put. If a future change
+        // starts carrying the review half across a re-draft (the way the sent half
+        // deliberately is), id reuse could defeat this comparison silently.
+        const review = progress.review;
         const specIds = new Set(specs.map((s) => s.id));
-        const attached = [...progress.threadsAdded, ...progress.threadsFailed];
+        const attached = [...review.threadsAdded, ...review.threadsFailed];
         if (attached.some((id) => !specIds.has(id))) throw new Error(DRAFT_CHANGED_AFTER_POST);
 
         for (const spec of specs) {
-          if (progress.threadsAdded.includes(spec.id) || progress.threadsFailed.includes(spec.id)) continue;
+          if (review.threadsAdded.includes(spec.id) || review.threadsFailed.includes(spec.id)) continue;
           const landed = await addThreadWithFallback(gh, reviewId, spec);
-          (landed ? progress.threadsAdded : progress.threadsFailed).push(spec.id);
+          (landed ? review.threadsAdded : review.threadsFailed).push(spec.id);
           save();
         }
 
-        const failed = draft.findings.filter((f) => progress.threadsFailed.includes(f.id));
+        const failed = draft.findings.filter((f) => review.threadsFailed.includes(f.id));
         const body = buildSubmitBody(verdict, failed);
         // A submit with no threads and an empty body is rejected by GitHub. An
         // approve always has the LGTM line, so it is never empty; a comment with
         // nothing attached and nothing to say submits nothing, same as today's
         // no-findings behavior — the pending review (if any) is left untouched,
         // never deleted.
-        const hasContent = progress.threadsAdded.length > 0 || progress.threadsFailed.length > 0 || body.length > 0;
+        const hasContent = review.threadsAdded.length > 0 || review.threadsFailed.length > 0 || body.length > 0;
         if (hasContent) {
           const res = await gh.submitReview(reviewId, verdict === "approve" ? "APPROVE" : "COMMENT", body);
           reviewUrl = res.url;
@@ -323,7 +325,9 @@ export async function execute(
     ...rec,
     state,
     postProgress: progress,
-    postResult: { reviewUrl, postedAt: nowIso, resolvedThreadIds },
+    // Straight from the sent-ledger — it already holds exactly the GitHub thread
+    // ids we resolved, this cycle and (after a re-draft) any earlier attempt of it.
+    postResult: { reviewUrl, postedAt: nowIso, resolvedThreadIds: [...progress.sent.resolvedThreads] },
     updatedAt: nowIso,
     doneAt: state === "DONE" ? nowIso : null,
   };

@@ -16,6 +16,29 @@ export const DRAFT_LOCKED_MESSAGE =
   "Some findings are already attached to a draft review on GitHub. Retry the post to send the rest, or discard the draft review on GitHub.";
 const LOCKED: Err = { error: DRAFT_LOCKED_MESSAGE };
 
+/** True when this post cycle has landed something on GitHub, or holds a draft
+ *  review, and has not yet completed. Regenerating the draft in this state is
+ *  incoherent: the new findings don't match the threads already attached, and
+ *  dropping `pendingReviewId` orphans a real pending review on the PR — which
+ *  then blocks every future post with PENDING_REVIEW_CONFLICT until the user
+ *  discards it by hand. So *every* regeneration entry point is gated on this:
+ *  api.submitFeedback (via draftLocked below), orchestrator.runPost's
+ *  STALE→enqueueGen recovery, and poller.decideWork's unattended re-review.
+ *
+ *  "Unspent" is the operative word. Once `reviewPosted` is set the cycle is done
+ *  — the ledger has been spent and the next generation legitimately starts from a
+ *  clean one. Gating on the mere *existence* of a postProgress instead would wedge
+ *  a completed record forever: runGeneration's own catch preserves the previous
+ *  cycle's progress, so one hiccuped re-review would stop a POSTED_AWAITING_AUTHOR
+ *  record from ever being re-reviewed again. */
+export function hasUnspentLedger(rec: PrRecord): boolean {
+  const p = rec.postProgress;
+  return p != null && !p.reviewPosted &&
+    (p.review.pendingReviewId != null ||
+     p.sent.repliedTargets.length > 0 || p.sent.resolvedThreads.length > 0 ||
+     p.review.threadsAdded.length > 0 || p.review.threadsFailed.length > 0);
+}
+
 /** True once a post is in flight or some mutation from the current post cycle
  *  has actually landed on (or been opened against) GitHub — a reply posted, a
  *  thread resolved, a pending review created, or a finding attached to (or
@@ -23,31 +46,25 @@ const LOCKED: Err = { error: DRAFT_LOCKED_MESSAGE };
  *  Editing or dropping an item past this point cannot un-post what already
  *  landed, so toggleItem/editItem/submitFeedback reject while this holds.
  *
- *  `pendingReviewId != null` locks on its own, even with nothing attached yet:
- *  executor.ts persists that id *before* the first addReviewThread call, so the
- *  window between those two saves is a real gap — a full network round-trip,
- *  not a crash window — during which the review already exists on GitHub. A
- *  user edit landing in that gap ships with the post's *old* captured body
- *  while the UI shows the *new* one as posted (see executor.ts's backstop
- *  comment for why body edits, unlike dropped ids, are invisible to it). The
- *  `state === "POSTING"` check closes the narrower window before that: the
- *  whole post is committed to landing once POSTING starts, even before
- *  reconcilePendingReview's first save. Locking on a bare pending review is
- *  correct conservatism, not over-locking — the review genuinely exists.
+ *  It is hasUnspentLedger plus one arm: `state === "POSTING"`. That arm closes the
+ *  window before the ledger exists at all — the whole post is committed to landing
+ *  once POSTING starts, even before reconcilePendingReview's first save.
+ *
+ *  Inside the ledger, `pendingReviewId != null` locks on its own, even with nothing
+ *  attached yet: executor.ts persists that id *before* the first addReviewThread
+ *  call, so the window between those two saves is a real gap — a full network
+ *  round-trip, not a crash window — during which the review already exists on
+ *  GitHub. A user edit landing in that gap ships with the post's *old* captured body
+ *  while the UI shows the *new* one as posted (see executor.ts's backstop comment for
+ *  why body edits, unlike dropped ids, are invisible to it). Locking on a bare
+ *  pending review is correct conservatism, not over-locking — the review genuinely
+ *  exists.
  *
  *  See executor.ts's DRAFT_CHANGED_AFTER_POST backstop for the mirror check on
- *  the executor side, which catches a toggle/edit that slips past this lock.
- *  That backstop does NOT cover a re-draft from feedback — runGeneration nulls
- *  postProgress on every regeneration, so there's no stale id left for it to
- *  catch there; a clean re-draft is instead caught by execute() asking GitHub
- *  directly before taking its no-findings fast path. */
+ *  the executor side, which catches a toggle/edit that slips past this lock. */
 export function draftLocked(rec: PrRecord): boolean {
   if (rec.state === "POSTING") return true;
-  const p = rec.postProgress;
-  return p != null && !p.reviewPosted &&
-    (p.pendingReviewId != null ||
-     p.repliesPosted.length > 0 || p.threadsResolved.length > 0 ||
-     p.threadsAdded.length > 0 || p.threadsFailed.length > 0);
+  return hasUnspentLedger(rec);
 }
 
 function findItem(rec: PrRecord, ref: string) {
@@ -95,11 +112,11 @@ export const api = {
   submitFeedback(deps: ApiDeps, key: string, text: string): { ok: true } | Err {
     const rec = deps.store.get(key);
     if (!rec) return NF;
-    // A re-draft nulls postProgress (runGeneration) — wiping the repliesPosted /
-    // threadsResolved ledger that keeps a resumed post from re-posting a reply
-    // to the same GitHub thread. While the draft is locked, that ledger is the
-    // only thing preventing a duplicate mutation, so a fresh draft must wait
-    // until the user resolves the lock (retry post, or force-approve).
+    // A re-draft mid-cycle is incoherent: the new findings have nothing to do with
+    // the threads already attached to the pending review we opened, and starting a
+    // fresh review half orphans that one on the PR. So a fresh draft must wait until
+    // the user resolves the lock (retry the post, or force-approve). Same predicate
+    // that gates the poller and the STALE recovery — see hasUnspentLedger.
     if (draftLocked(rec)) return LOCKED;
     if (rec.draft) deps.store.snapshot(rec);
     rec.feedbackHistory.push({ at: deps.nowIso(), text, producedVersion: rec.draftVersion + 1 });

@@ -1,6 +1,7 @@
 import type { SearchPr, ReviewThread } from "./gh";
 import type { PrRecord, Mode } from "./schema";
 import { prKey } from "./schema";
+import { hasUnspentLedger } from "./api";
 
 /**
  * True when the author has the last word in one of my open review threads — the
@@ -68,15 +69,19 @@ export function decideWork(args: {
     if (!rec) { work.push({ key, mode: "first-review", sha, pr }); continue; }
     if (BUSY.has(rec.state)) continue;
     if (rec.dismissed) continue; // set aside by the user: never re-review while dismissed, even if the head advances
-    // An ERROR record whose postProgress still carries a ledger (replies posted,
-    // threads resolved/attached, or a pending review opened) must not be
-    // silently regenerated on a head advance: runGeneration nulls postProgress
-    // on every regeneration, and that ledger is the only thing preventing a
-    // resumed post from re-posting a reply to a thread that already has one.
-    // The user's own escapes (retry post, force-approve, or feedback once
-    // draftLocked permits it) remain available; only the unattended poll path
-    // is blocked here.
-    if (rec.state === "ERROR" && rec.postProgress != null) continue;
+    // A record whose post cycle is still unspent — a reply posted, a thread
+    // resolved, a finding attached, or a pending review opened, and no review
+    // submitted yet — must not be regenerated unattended, in *any* state: the new
+    // findings would not match the threads already attached, and starting a fresh
+    // review half orphans the pending review we opened (see api.hasUnspentLedger).
+    // Only the user can resolve this, by retrying the post or force-approving; a
+    // STALE/ERROR record that gets stuck here carries an error saying so
+    // (orchestrator.POST_STALLED_MID_CYCLE). Note this is deliberately *not* a
+    // check for `postProgress != null`: runGeneration's catch preserves the
+    // previous cycle's progress, so a record whose ledger is already spent
+    // (reviewPosted) and whose generation merely hiccupped would then never be
+    // re-reviewed again.
+    if (hasUnspentLedger(rec)) continue;
 
     const shaAdvanced = sha && sha !== rec.headSha;
     const authorReplied = args.authorRepliedKeys.has(key);

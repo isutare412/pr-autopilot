@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { decideWork, repoAllowed, authorAwaitingReview, keysToProbe } from "../src/main/core/poller";
-import type { PrRecord } from "../src/main/core/schema";
+import type { PrRecord, PostProgress } from "../src/main/core/schema";
 import type { SearchPr, ReviewThread } from "../src/main/core/gh";
 
 const thread = (isResolved: boolean, authors: string[]): ReviewThread => ({
@@ -105,15 +105,25 @@ describe("decideWork", () => {
     expect(work).toEqual([]);
   });
 
-  const postProgress = (over: Partial<PrRecord["postProgress"]> = {}) => ({
-    repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
-    pendingReviewId: null, threadsAdded: [], threadsFailed: [], ...over,
+  const postProgress = (o: {
+    repliedTargets?: number[]; resolvedThreads?: string[];
+    pendingReviewId?: string | null; threadsAdded?: string[]; threadsFailed?: string[];
+    reviewPosted?: boolean; reviewerRequested?: boolean;
+  } = {}): PostProgress => ({
+    sent: { repliedTargets: o.repliedTargets ?? [], resolvedThreads: o.resolvedThreads ?? [] },
+    review: {
+      pendingReviewId: o.pendingReviewId ?? null,
+      threadsAdded: o.threadsAdded ?? [],
+      threadsFailed: o.threadsFailed ?? [],
+    },
+    reviewPosted: o.reviewPosted ?? false,
+    reviewerRequested: o.reviewerRequested ?? false,
   });
 
   it("does not auto-regenerate an ERROR record whose postProgress ledger is non-empty, even when the head advances (FINDING I-2)", () => {
     const work = decideWork({
       queue: [pr(65)],
-      existing: new Map([existing(65, { state: "ERROR", headSha: "SHA1", postProgress: postProgress({ repliesPosted: ["v1"] }) })]),
+      existing: new Map([existing(65, { state: "ERROR", headSha: "SHA1", postProgress: postProgress({ repliedTargets: [111] }) })]),
       liveHeads: new Map([[key(65), "SHA2"]]), authorRepliedKeys: new Set(),
     });
     expect(work).toEqual([]);
@@ -127,6 +137,41 @@ describe("decideWork", () => {
     });
     expect(work.length).toBe(1);
     expect(work[0].sha).toBe("SHA2");
+  });
+
+  /** The gate is the ledger, not the mere presence of a postProgress. runGeneration's
+   *  own catch preserves the previous cycle's progress, so gating on `postProgress
+   *  != null` would freeze a record whose review already landed and whose next
+   *  generation merely hiccuped — it would never be re-reviewed again. */
+  it("re-reviews a POSTED_AWAITING_AUTHOR record whose ledger is SPENT (reviewPosted) when the author pushes", () => {
+    const work = decideWork({
+      queue: [pr(65)],
+      existing: new Map([existing(65, { state: "POSTED_AWAITING_AUTHOR", headSha: "SHA1",
+        postProgress: postProgress({ repliedTargets: [111], resolvedThreads: ["N1"], reviewPosted: true }) })]),
+      liveHeads: new Map([[key(65), "SHA2"]]), authorRepliedKeys: new Set(),
+    });
+    expect(work.map((w) => w.key)).toEqual([key(65)]);
+    expect(work[0].mode).toBe("re-review");
+  });
+
+  it("does not re-review a POSTED_AWAITING_AUTHOR record whose ledger is UNSPENT when the author pushes", () => {
+    const work = decideWork({
+      queue: [pr(65)],
+      existing: new Map([existing(65, { state: "POSTED_AWAITING_AUTHOR", headSha: "SHA1",
+        postProgress: postProgress({ repliedTargets: [111] }) })]),
+      liveHeads: new Map([[key(65), "SHA2"]]), authorRepliedKeys: new Set(),
+    });
+    expect(work).toEqual([]);
+  });
+
+  it("does not auto-regenerate a STALE record holding an unspent ledger (the round-4 hole, poller side)", () => {
+    const work = decideWork({
+      queue: [pr(65)],
+      existing: new Map([existing(65, { state: "STALE", headSha: "SHA1",
+        postProgress: postProgress({ pendingReviewId: "PRR_1", threadsAdded: ["f1"] }) })]),
+      liveHeads: new Map([[key(65), "SHA2"]]), authorRepliedKeys: new Set(),
+    });
+    expect(work).toEqual([]);
   });
 
   it("repoAllowed: empty allow = all, allow restricts, deny wins, owner/repo matches", () => {

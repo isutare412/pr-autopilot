@@ -99,20 +99,59 @@ export const PostResult = z.object({
 });
 export type PostResult = z.infer<typeof PostResult>;
 
+/** The half of a post cycle that has already LANDED on GitHub — keyed by the
+ *  GitHub-side id each mutation landed against, never by one of our own ids.
+ *
+ *  That keying is the entire point of splitting PostProgress in two. A reply is
+ *  attached to a comment's `replyTargetDatabaseId`, a resolve to a thread's
+ *  `threadNodeId`; those ids belong to the PR, outlive any draft of ours, and
+ *  neither mutation can be taken back. Our verify-item `id`s, by contrast, are
+ *  minted afresh by every generation — so a re-draft renames the very same GitHub
+ *  threads, a ledger keyed by them silently stops matching, and a resumed post
+ *  replies a second time to a thread that already carries our reply. Keyed by
+ *  GitHub's own ids this half stays true across a re-draft, which is why
+ *  orchestrator.runGeneration deliberately carries it into the new cycle. */
+export const SentToGitHub = z.object({
+  repliedTargets: z.array(z.number().int()),   // replyTargetDatabaseId of every reply posted
+  resolvedThreads: z.array(z.string()),        // threadNodeId of every thread resolved
+});
+export type SentToGitHub = z.infer<typeof SentToGitHub>;
+
+/** The half that belongs to the *current draft*: the GraphQL pending review this
+ *  draft's findings are being attached to, and which of them made it in. Keyed by
+ *  local finding id — correct precisely because, unlike the sent half above, these
+ *  ids are meaningless once the draft is regenerated (the new findings are
+ *  different comments, and the review they would attach to is a different review).
+ *  So runGeneration resets this half. Persisted after every mutation so a crash
+ *  resumes into the same draft review instead of starting a second one (GitHub
+ *  allows only one pending review per user per PR). */
+export const ReviewInProgress = z.object({
+  pendingReviewId: z.string().nullable(),
+  threadsAdded: z.array(z.string()),    // finding ids that became threads
+  threadsFailed: z.array(z.string()),   // finding ids GitHub rejected → folded into the body
+});
+export type ReviewInProgress = z.infer<typeof ReviewInProgress>;
+
+/** The executor's idempotency ledger for one post cycle, in two halves that
+ *  behave differently across a re-draft — see each. `reviewPosted` ends the
+ *  cycle: once the review is submitted the whole ledger is *spent*, and the next
+ *  generation starts from a clean one (a later re-review must be free to reply to
+ *  the same threads again). */
 export const PostProgress = z.object({
-  repliesPosted: z.array(z.string()),       // verify item ids
-  threadsResolved: z.array(z.string()),     // verify item ids
+  sent: SentToGitHub,
+  review: ReviewInProgress,
   reviewPosted: z.boolean(),
   reviewerRequested: z.boolean(),
-  // The GraphQL pending review the findings are attached to, and which findings
-  // already made it in. Persisted after every mutation so a crash resumes into
-  // the same draft review instead of starting a second one (GitHub allows only
-  // one pending review per user per PR).
-  pendingReviewId: z.string().nullable().default(null),
-  threadsAdded: z.array(z.string()).default([]),    // finding ids that became threads
-  threadsFailed: z.array(z.string()).default([]),   // finding ids GitHub rejected → folded into the body
 });
 export type PostProgress = z.infer<typeof PostProgress>;
+
+export function emptyPostProgress(): PostProgress {
+  return {
+    sent: { repliedTargets: [], resolvedThreads: [] },
+    review: { pendingReviewId: null, threadsAdded: [], threadsFailed: [] },
+    reviewPosted: false, reviewerRequested: false,
+  };
+}
 
 export const PrRecord = z.object({
   key: z.string(),
@@ -144,10 +183,58 @@ export const PrRecord = z.object({
 });
 export type PrRecord = z.infer<typeof PrRecord>;
 
-/** Normalize a raw on-disk record before parsing. Converts the removed
- *  "DISMISSED" pseudo-state to `{ dismissed: true, state: <recovered> }`,
- *  recovering the lifecycle state from the obsolete `dismissedFrom` snapshot
- *  when present, else inferring it the way the old restore() did. */
+/** Re-key a postProgress persisted in the pre-split shape, where `repliesPosted`
+ *  and `threadsResolved` held *local verify-item ids*, onto the GitHub-side ids
+ *  those mutations actually landed against. The record carries the draft those
+ *  ids were minted from, so the mapping is normally exact.
+ *
+ *  When an id cannot be mapped (a draft that no longer holds it) the mutation is
+ *  unrecoverable — we know something landed but not on what. So we fail safe and
+ *  mark *every* thread in the draft as already sent: skipping a reply the user can
+ *  still post by hand is recoverable; posting a second copy into the author's
+ *  thread is not. */
+function migratePostProgress(old: Record<string, unknown>, rawDraft: unknown): unknown {
+  const verify = (rawDraft as { verify?: unknown } | null | undefined)?.verify;
+  const items = (Array.isArray(verify) ? verify : []) as Record<string, unknown>[];
+
+  function reKey<T>(localIds: unknown, field: "replyTargetDatabaseId" | "threadNodeId"): T[] {
+    const ids = Array.isArray(localIds) ? localIds : [];
+    const out = new Set<T>();
+    let unmappable = false;
+    for (const id of ids) {
+      const v = items.find((it) => it.id === id);
+      if (v && v[field] != null) out.add(v[field] as T);
+      else unmappable = true;
+    }
+    if (unmappable) for (const it of items) if (it[field] != null) out.add(it[field] as T);
+    return [...out];
+  }
+
+  return {
+    sent: {
+      repliedTargets: reKey<number>(old.repliesPosted, "replyTargetDatabaseId"),
+      resolvedThreads: reKey<string>(old.threadsResolved, "threadNodeId"),
+    },
+    review: {
+      pendingReviewId: old.pendingReviewId ?? null,
+      threadsAdded: old.threadsAdded ?? [],
+      threadsFailed: old.threadsFailed ?? [],
+    },
+    reviewPosted: old.reviewPosted ?? false,
+    reviewerRequested: old.reviewerRequested ?? false,
+  };
+}
+
+/** Normalize a raw on-disk record before parsing. Two migrations:
+ *
+ *  - the removed "DISMISSED" pseudo-state → `{ dismissed: true, state: <recovered> }`,
+ *    recovering the lifecycle state from the obsolete `dismissedFrom` snapshot when
+ *    present, else inferring it the way the old restore() did.
+ *  - the pre-split `postProgress` (flat `repliesPosted`/`threadsResolved` keyed by
+ *    local verify ids) → the two-half shape keyed by GitHub's ids. This must run
+ *    before PrRecord.parse: the new schema has no `repliesPosted` field, so an
+ *    un-migrated record would parse with the unknown keys stripped and an *empty*
+ *    sent-ledger — exactly the duplicate-reply bug the split exists to prevent. */
 export function migrateRecord(raw: unknown): unknown {
   if (!raw || typeof raw !== "object") return raw;
   const r = raw as Record<string, unknown>;
@@ -158,6 +245,10 @@ export function migrateRecord(raw: unknown): unknown {
       : "GENERATING";
     r.state = (typeof r.dismissedFrom === "string" ? r.dismissedFrom : undefined) ?? inferred;
     r.dismissed = true;
+  }
+  const p = r.postProgress;
+  if (p && typeof p === "object" && !("sent" in p)) {
+    r.postProgress = migratePostProgress(p as Record<string, unknown>, r.draft);
   }
   return r;
 }
