@@ -3,9 +3,9 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../src/main/core/store";
-import { Orchestrator, POST_STALLED_MID_CYCLE } from "../src/main/core/orchestrator";
+import { Orchestrator, POST_STALLED_MID_CYCLE, carryLedger } from "../src/main/core/orchestrator";
 import { hasUnspentLedger } from "../src/main/core/api";
-import type { Draft, PrRecord, VerifyItem } from "../src/main/core/schema";
+import type { Draft, PrRecord, PostProgress, VerifyItem } from "../src/main/core/schema";
 
 const draft: Draft = { overallEn: "o", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
 
@@ -570,6 +570,38 @@ describe("Orchestrator — the post ledger across a re-draft", () => {
 
     expect(gh.postReply).toHaveBeenCalledTimes(1);   // the new round of review may speak in that thread again
     expect(store.get(key)!.postProgress!.sent.repliedTargets).toEqual([111]);
+  });
+});
+
+/** FINDING 2: carryLedger's carry-branch is now unreachable in production — the
+ *  atomic hasUnspentLedger re-check inside runGeneration's lock stops every
+ *  ordinary path before it can ever hand carryLedger a live ledger. But it is kept
+ *  as deliberate defence in depth (see the comment on carryLedger itself), so its
+ *  actual contract is pinned here directly rather than relying on runGeneration's
+ *  integration tests above, which never exercise the carry-branch at all. */
+describe("carryLedger", () => {
+  const unspent = (): PostProgress => ({
+    sent: { repliedTargets: [111], resolvedThreads: ["N1"] },
+    review: { pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: ["f2"] },
+    reviewPosted: false, reviewerRequested: true,
+  });
+
+  it("an unspent ledger: carries the sent half verbatim, resets the review half and the posted/requested flags", () => {
+    const carried = carryLedger(unspent());
+    expect(carried).toEqual({
+      sent: { repliedTargets: [111], resolvedThreads: ["N1"] },
+      review: { pendingReviewId: null, threadsAdded: [], threadsFailed: [] },
+      reviewPosted: false, reviewerRequested: false,
+    });
+  });
+
+  it("a spent ledger (reviewPosted) returns null — the next cycle starts clean, free to reply to the same thread again", () => {
+    const spent: PostProgress = { ...unspent(), reviewPosted: true };
+    expect(carryLedger(spent)).toBeNull();
+  });
+
+  it("a null ledger returns null", () => {
+    expect(carryLedger(null)).toBeNull();
   });
 });
 

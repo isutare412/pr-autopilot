@@ -52,8 +52,19 @@ export const POST_STALLED_MID_CYCLE =
  *    pending review. See hasUnspentLedger.)
  *  - A *spent* cycle (reviewPosted) starts the next one clean. Its replies belong to
  *    a review that already landed; a later re-review must be free to reply to those
- *    same threads again. */
-function carryLedger(prev: PostProgress | null): PostProgress | null {
+ *    same threads again.
+ *
+ *  Currently unreachable in production: runGeneration re-checks hasUnspentLedger
+ *  atomically under its own lock before ever calling this, so every ordinary path
+ *  that could hand this an unspent ledger is stopped there first (see the comment
+ *  on that re-check). That makes this function's carry-branch pure defence in
+ *  depth, kept deliberately — this branch took five review rounds to land, four of
+ *  them caused by the ledger being wiped across a re-draft — in case a future
+ *  change ever re-opens a path into runGeneration with a live ledger still
+ *  attached. Do not delete it as dead code, and do not assume it is load-bearing
+ *  today: it is tested directly (see orchestrator.test.ts) precisely because
+ *  nothing else currently exercises it. */
+export function carryLedger(prev: PostProgress | null): PostProgress | null {
   if (!prev || prev.reviewPosted) return null;
   return {
     ...emptyPostProgress(),
