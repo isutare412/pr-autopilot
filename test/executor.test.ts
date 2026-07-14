@@ -859,4 +859,45 @@ describe("execute → fast path re-asks GitHub before trusting our own bookkeepi
     expect(rec.calls.some((c) => c.args.join(" ").includes("addPullRequestReview(input"))).toBe(false);
     expect(out.state).toBe("DONE");
   });
+
+  /** The regression pin for FINDING I-1: an "approve" verdict with zero findings
+   *  still builds a non-null payload, so the pre-flight findPendingReview check
+   *  still runs and still aborts rather than landing a second review beside a
+   *  live orphan/hand-written one. */
+  it("zero findings + approve + a live pending review on GitHub → still throws PENDING_REVIEW_CONFLICT, no REST call", async () => {
+    const { gh, rec } = ghReconcile("PRR_theirs");
+    const clean = baseRec({ postVerdict: "approve" });
+    clean.draft = { overallEn: "clean", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
+
+    await expect(execute(gh, clean, "me", "2026-07-14T00:00:00Z")).rejects.toThrow(PENDING_REVIEW_CONFLICT);
+
+    expect(rec.calls.some((c) => c.args.some((a) => a.includes("/pulls/65/reviews")))).toBe(false);
+    expect(rec.calls.some((c) => c.args.join(" ").includes("addPullRequestReview(input"))).toBe(false);
+    expect(submitCall(rec)).toBeUndefined();
+  });
+
+  /** The FINDING I-1 fix itself: a "comment" verdict with zero findings builds a
+   *  null payload — nothing to post, nothing that can collide — so a hand-written
+   *  (or orphaned) pending review live on the same PR must NOT abort the post.
+   *  Steps 1–2 (replies/resolves) still have to land normally, since they don't
+   *  touch the pending-review machinery at all. */
+  it("comment verdict + zero findings + a pending review live on GitHub still posts replies/resolves, no throw, no REST review", async () => {
+    const { gh, rec } = ghReconcile("PRR_theirs");
+    const r = baseRec({ mode: "re-review", postVerdict: "comment" });
+    r.draft = { overallEn: "re-review", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [],
+      verify: [
+        { id: "v1", ref: "V1", threadNodeId: "N1", replyTargetDatabaseId: 111, path: "a.go", line: 1,
+          verdict: "resolve", rationaleEn: "fixed", replyBody: "확인했습니다.", included: true, editedBody: null },
+      ] };
+
+    const out = await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+
+    expect(rec.calls.some((c) => c.args.some((a) => a.includes("/comments/111/replies")))).toBe(true);
+    expect(rec.calls.some((c) => c.args.includes("threadId=N1"))).toBe(true);
+    expect(rec.calls.some((c) => c.args.some((a) => a.includes("/pulls/65/reviews")))).toBe(false);
+    expect(rec.calls.some((c) => c.args.join(" ").includes("addPullRequestReview(input"))).toBe(false);
+    expect(submitCall(rec)).toBeUndefined();
+    expect(out.state).toBe("POSTED_AWAITING_AUTHOR");
+    expect(out.postResult?.resolvedThreadIds).toEqual(["N1"]);
+  });
 });

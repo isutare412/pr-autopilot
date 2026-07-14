@@ -224,16 +224,22 @@ export async function execute(
     const specs = buildThreadSpecs(draft);
 
     if (specs.length === 0 && !progress.pendingReviewId) {
-      if (await gh.findPendingReview(rec.owner, rec.repo, rec.number, login)) {
-        // Someone's pending review is live — ours from before a re-draft wiped
-        // our record of it, or the user's own hand-written draft. Landing a
-        // REST review beside it would violate GitHub's one-pending-review-per-
-        // user limit and, if it's our orphan, wedge every future post behind
-        // this same conflict until the user discards it by hand.
-        throw new Error(PENDING_REVIEW_CONFLICT);
-      }
+      // Build the payload before asking GitHub anything: a "comment" verdict
+      // with zero findings is null — nothing is posted, so nothing can collide
+      // with a pending review, ours or anyone else's. Guard only the actual
+      // REST call, or a hand-written draft the user keeps open on the PR turns
+      // every replies-only post into a hard, un-retriable ERROR (the replies in
+      // steps 1–2 above have already landed by the time this throws).
       const payload = buildReviewPayload(rec, liveSha, verdict);
       if (payload) {
+        if (await gh.findPendingReview(rec.owner, rec.repo, rec.number, login)) {
+          // Someone's pending review is live — ours from before a re-draft wiped
+          // our record of it, or the user's own hand-written draft. Landing a
+          // REST review beside it would violate GitHub's one-pending-review-per-
+          // user limit and, if it's our orphan, wedge every future post behind
+          // this same conflict until the user discards it by hand.
+          throw new Error(PENDING_REVIEW_CONFLICT);
+        }
         const res = await gh.postReview(rec.owner, rec.repo, rec.number, payload);
         reviewUrl = res.html_url;
       }
