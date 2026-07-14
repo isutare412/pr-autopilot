@@ -68,40 +68,37 @@ export function defaultVerdict(draft: Draft): PostVerdict {
   return hasNonNit || hasOpenThreads ? "comment" : "approve";
 }
 
-/** Build the batched review submission, or null when there's no review to post
- *  (a "comment" disposition with no new findings — the substance is the
- *  replies/resolves, so an empty COMMENT review would just be noise). */
+/** The REST payload for the only case that needs no threads: a clean PR. An
+ *  approve with no findings is a bare LGTM; a comment with no findings posts
+ *  nothing at all (the substance is the replies/resolves). Findings, when there
+ *  are any, go through the GraphQL pending-review flow in execute() instead. */
 export function buildReviewPayload(
   rec: PrRecord, headSha: string, verdict: PostVerdict = defaultVerdict(rec.draft!),
 ) {
-  const draft = rec.draft!;
-  const included = draft.findings.filter((f) => f.included);
-  const anchorable = included.filter((f) => f.anchorable);
-  const unanchorable = included.filter((f) => !f.anchorable);
+  return verdict === "approve"
+    ? { event: "APPROVE", body: APPROVE_BODY, commit_id: headSha }
+    : null;
+}
 
-  if (included.length === 0) {
-    return verdict === "approve"
-      ? { event: "APPROVE", body: APPROVE_BODY, commit_id: headSha }
-      : null;
+async function openPendingReview(
+  gh: Gh, prNodeId: string, commitOid: string, progress: PostProgress, save: () => void,
+): Promise<string> {
+  if (progress.pendingReviewId) return progress.pendingReviewId;
+  progress.pendingReviewId = await gh.createPendingReview(prNodeId, commitOid);
+  save();
+  return progress.pendingReviewId;
+}
+
+/** Try the precise line thread; on GitHub refusing the anchor, retry the same
+ *  finding as a file-level thread. Returns false only when even that is refused.
+ *  Task 6 adds the error discrimination — for now any failure propagates. */
+async function addThreadWithFallback(gh: Gh, reviewId: string, spec: ThreadSpec): Promise<boolean> {
+  if (spec.line) {
+    await gh.addReviewThread(reviewId, spec.line);
+    return true;
   }
-
-  const comments = anchorable.map((f) => {
-    const c: any = { path: f.path, line: f.line, side: f.side, body: f.editedBody ?? f.body };
-    if (f.startLine != null) { c.start_line = f.startLine; c.start_side = f.startSide ?? f.side; }
-    return c;
-  });
-
-  const unanchorableText = unanchorable.length === 0 ? "" :
-    unanchorable.map((f) => `${f.path}:${f.line} — ${f.editedBody ?? f.body}`).join("\n\n");
-
-  // An APPROVE always leads with the LGTM line; an unanchorable included finding
-  // is appended below it so it still ships. A COMMENT carries only the finding
-  // text (unanchorable folded into the body, else empty).
-  const body = verdict === "approve"
-    ? [APPROVE_BODY, unanchorableText].filter(Boolean).join("\n\n")
-    : unanchorableText;
-
-  return { event: verdict === "approve" ? "APPROVE" : "COMMENT", body, commit_id: headSha, comments };
+  await gh.addReviewThread(reviewId, spec.file);
+  return true;
 }
 
 export async function execute(
@@ -110,7 +107,7 @@ export async function execute(
 ): Promise<PrRecord> {
   // Pre-flight: never post to a PR that is no longer open (merged or closed),
   // then the head-SHA staleness check. Both come from one gh call.
-  const { state: prState, headSha: liveSha } = await gh.prStatus(rec.owner, rec.repo, rec.number);
+  const { state: prState, headSha: liveSha, nodeId } = await gh.prStatus(rec.owner, rec.repo, rec.number);
   if (prState !== "OPEN") {
     return { ...rec, state: "CLOSED", updatedAt: nowIso };
   }
@@ -146,15 +143,36 @@ export async function execute(
     save();
   }
 
-  // 3. Batched review (APPROVE or COMMENT per the verdict). May be a no-op when
-  //    the verdict is "comment" and there are no new findings to attach.
+  // 3. The review itself. With findings, every one becomes a thread on a pending
+  //    review that is then submitted as a whole — one review, one notification.
+  //    With no findings it's a bare REST approve (or nothing at all).
   let reviewUrl: string | null = rec.postResult?.reviewUrl ?? null;
   if (!progress.reviewPosted) {
-    const payload = buildReviewPayload(rec, liveSha, verdict);
-    if (payload) {
-      const res = await gh.postReview(rec.owner, rec.repo, rec.number, payload);
-      reviewUrl = res.html_url;
+    const specs = buildThreadSpecs(draft);
+
+    if (specs.length === 0) {
+      const payload = buildReviewPayload(rec, liveSha, verdict);
+      if (payload) {
+        const res = await gh.postReview(rec.owner, rec.repo, rec.number, payload);
+        reviewUrl = res.html_url;
+      }
+    } else {
+      const reviewId = await openPendingReview(gh, nodeId, liveSha, progress, save);
+
+      for (const spec of specs) {
+        if (progress.threadsAdded.includes(spec.id) || progress.threadsFailed.includes(spec.id)) continue;
+        const landed = await addThreadWithFallback(gh, reviewId, spec);
+        (landed ? progress.threadsAdded : progress.threadsFailed).push(spec.id);
+        save();
+      }
+
+      const failed = draft.findings.filter((f) => progress.threadsFailed.includes(f.id));
+      const res = await gh.submitReview(
+        reviewId, verdict === "approve" ? "APPROVE" : "COMMENT", buildSubmitBody(verdict, failed),
+      );
+      reviewUrl = res.url;
     }
+
     progress.reviewPosted = true;   // mark done even when skipped, so resume doesn't retry
     save();
   }

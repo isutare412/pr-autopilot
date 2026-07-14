@@ -4,7 +4,7 @@ import {
   execute, buildReviewPayload, buildThreadSpecs, fileThreadBody, buildSubmitBody,
   defaultVerdict, forceApprove,
 } from "../src/main/core/executor";
-import type { PrRecord } from "../src/main/core/schema";
+import type { PrRecord, PostProgress } from "../src/main/core/schema";
 
 function baseRec(over: Partial<PrRecord> = {}): PrRecord {
   return {
@@ -33,11 +33,31 @@ class Recorder implements GhRunner {
 
 function ghWith(headSha: string, state = "OPEN"): { gh: Gh; rec: Recorder } {
   const rec = new Recorder((args) => {
+    const joined = args.join(" ");
     if (args.includes("state,headRefOid,id")) return JSON.stringify({ state, headRefOid: headSha, id: "PR_node1" });
+    if (joined.includes("reviews(first:1,states:PENDING"))
+      return JSON.stringify({ data: { repository: { pullRequest: { reviews: { nodes: [] } } } } });
+    if (joined.includes("addPullRequestReview(input"))
+      return JSON.stringify({ data: { addPullRequestReview: { pullRequestReview: { id: "PRR_1" } } } });
+    if (joined.includes("addPullRequestReviewThread"))
+      return JSON.stringify({ data: { addPullRequestReviewThread: { thread: { id: "T1" } } } });
+    if (joined.includes("submitPullRequestReview"))
+      return JSON.stringify({ data: { submitPullRequestReview: { pullRequestReview: { url: "http://x/r/1" } } } });
     if (args.some((a) => a.includes("/reviews"))) return JSON.stringify({ html_url: "http://x/r/1" });
     return "{}";
   });
   return { gh: new Gh(rec, "github.com"), rec };
+}
+
+/** The thread mutations that actually ran, in order. */
+function threadCalls(rec: Recorder) {
+  return rec.calls.filter((c) => c.args.join(" ").includes("addPullRequestReviewThread"));
+}
+function submitCall(rec: Recorder) {
+  return rec.calls.find((c) => c.args.join(" ").includes("submitPullRequestReview"));
+}
+function argValue(call: { args: string[] }, name: string): string | undefined {
+  return call.args.find((a) => a.startsWith(`${name}=`))?.slice(name.length + 1);
 }
 
 describe("buildThreadSpecs", () => {
@@ -197,8 +217,7 @@ describe("execute", () => {
   it("approve verdict: posts an APPROVE review, no re-request, DONE", async () => {
     const { gh, rec } = ghWith("SHA1");
     const out = await execute(gh, baseRec({ postVerdict: "approve" }), "me", "2026-06-29T00:00:00Z");
-    const review = rec.calls.find((c) => c.args.some((a) => a.includes("/reviews")));
-    expect(JSON.parse(review!.input!).event).toBe("APPROVE");
+    expect(argValue(submitCall(rec)!, "event")).toBe("APPROVE");
     expect(rec.calls.some((c) => c.args.includes("/repos/O/R/pulls/65/requested_reviewers"))).toBe(false);
     expect(out.state).toBe("DONE");
   });
@@ -320,10 +339,8 @@ describe("execute", () => {
     const r = baseRec();
     r.draft!.findings = [{ ...r.draft!.findings[1], included: true }]; // Nit only
     const out = await execute(gh, r, "me", "2026-06-29T00:00:00Z");
-    const review = rec.calls.find((c) => c.args.some((a) => a.includes("/reviews")));
-    const payload = JSON.parse(review!.input!);
-    expect(payload.event).toBe("APPROVE");
-    expect(payload.body).toBe("LGTM :+1:");
+    expect(argValue(submitCall(rec)!, "event")).toBe("APPROVE");
+    expect(argValue(submitCall(rec)!, "body")).toBe("LGTM :+1:");
     expect(rec.calls.some((c) => c.args.includes("/repos/O/R/pulls/65/requested_reviewers"))).toBe(false);
     expect(out.state).toBe("DONE");
   });
@@ -337,10 +354,100 @@ describe("execute", () => {
         verdict: "follow-up", rationaleEn: "still open", replyBody: "**[Major]** ...", included: true, editedBody: null },
     ];
     const out = await execute(gh, r, "me", "2026-06-29T00:00:00Z");
-    const review = rec.calls.find((c) => c.args.some((a) => a.includes("/reviews")));
-    expect(JSON.parse(review!.input!).event).toBe("COMMENT");
+    expect(argValue(submitCall(rec)!, "event")).toBe("COMMENT");
     expect(rec.calls.some((c) => c.args.includes("/repos/O/R/pulls/65/requested_reviewers"))).toBe(true);
     expect(out.state).toBe("POSTED_AWAITING_AUTHOR");
+  });
+});
+
+describe("execute → pending-review flow", () => {
+  /** The regression this whole change exists for: an approve carrying one
+   *  anchorable and one out-of-diff nit. Both must become threads, and the body
+   *  must be nothing but the LGTM line. */
+  it("approve with an anchorable and an unanchorable nit → two threads, LGTM-only body", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const r = baseRec();
+    r.draft!.findings = [
+      { id: "f1", ref: "#1", path: "a.go", line: 460, side: "RIGHT", startLine: null, startSide: null,
+        anchorable: true, priority: "Nit", body: "**[Nit]** inline", suggestion: null, included: true, editedBody: null },
+      { id: "f2", ref: "#2", path: "a.go", line: 547, side: "RIGHT", startLine: null, startSide: null,
+        anchorable: false, priority: "Nit", body: "**[Nit]** doc drift", suggestion: null, included: true, editedBody: null },
+    ];
+    const out = await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+
+    const threads = threadCalls(rec);
+    expect(threads.length).toBe(2);
+    expect(argValue(threads[0], "subject")).toBe("LINE");
+    expect(argValue(threads[0], "line")).toBe("460");
+    expect(argValue(threads[1], "subject")).toBe("FILE");
+    expect(argValue(threads[1], "body")).toContain("line 547");
+    expect(argValue(threads[1], "body")).toContain("doc drift");
+
+    const submit = submitCall(rec)!;
+    expect(argValue(submit, "event")).toBe("APPROVE");
+    expect(argValue(submit, "body")).toBe("LGTM :+1:");   // nothing folded in
+
+    expect(out.state).toBe("DONE");
+    expect(out.postResult?.reviewUrl).toBe("http://x/r/1");
+  });
+
+  it("creates the pending review against the live head sha and the PR node id", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    await execute(gh, baseRec(), "me", "2026-07-14T00:00:00Z");
+    const create = rec.calls.find((c) => c.args.join(" ").includes("addPullRequestReview(input"))!;
+    expect(create.args).toContain("prId=PR_node1");
+    expect(create.args).toContain("oid=SHA1");
+  });
+
+  it("comment verdict submits COMMENT and re-requests self", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const out = await execute(gh, baseRec(), "me", "2026-07-14T00:00:00Z");  // f1 Critical → comment
+    expect(argValue(submitCall(rec)!, "event")).toBe("COMMENT");
+    expect(rec.calls.some((c) => c.args.includes("/repos/O/R/pulls/65/requested_reviewers"))).toBe(true);
+    expect(out.state).toBe("POSTED_AWAITING_AUTHOR");
+  });
+
+  it("zero findings + approve → the bare REST LGTM, no pending review at all", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const clean = baseRec();
+    clean.draft = { overallEn: "clean", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
+    const out = await execute(gh, clean, "me", "2026-07-14T00:00:00Z");
+    const restReview = rec.calls.find((c) => c.args.some((a) => a.includes("/pulls/65/reviews")));
+    expect(JSON.parse(restReview!.input!)).toMatchObject({ event: "APPROVE", body: "LGTM :+1:" });
+    expect(rec.calls.some((c) => c.args.join(" ").includes("addPullRequestReview(input"))).toBe(false);
+    expect(out.state).toBe("DONE");
+  });
+
+  it("resume: skips findings already in threadsAdded", async () => {
+    // The fake reports PRR_1 as the live pending review, so execute() resumes into it
+    // rather than opening a second one (Task 7 makes that reconciliation explicit).
+    const rec = new Recorder((args) => {
+      const joined = args.join(" ");
+      if (args.includes("state,headRefOid,id")) return JSON.stringify({ state: "OPEN", headRefOid: "SHA1", id: "PR_node1" });
+      if (joined.includes("reviews(first:1,states:PENDING"))
+        return JSON.stringify({ data: { repository: { pullRequest: { reviews: { nodes: [{ id: "PRR_1" }] } } } } });
+      if (joined.includes("submitPullRequestReview"))
+        return JSON.stringify({ data: { submitPullRequestReview: { pullRequestReview: { url: "http://x/r/1" } } } });
+      return "{}";
+    });
+    const r = baseRec();
+    r.postProgress = {
+      repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
+      pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: [],
+    };
+    await execute(new Gh(rec, "github.com"), r, "me", "2026-07-14T00:00:00Z");
+    expect(threadCalls(rec).length).toBe(0);                                    // f1 already in
+    expect(rec.calls.some((c) => c.args.join(" ").includes("addPullRequestReview(input"))).toBe(false);
+    expect(submitCall(rec)).toBeDefined();
+  });
+
+  it("persists pendingReviewId and threadsAdded as it goes", async () => {
+    const { gh } = ghWith("SHA1");
+    const saved: PostProgress[] = [];
+    await execute(gh, baseRec(), "me", "2026-07-14T00:00:00Z", (p) => saved.push({ ...p, threadsAdded: [...p.threadsAdded] }));
+    expect(saved.some((p) => p.pendingReviewId === "PRR_1")).toBe(true);
+    expect(saved.some((p) => p.threadsAdded.includes("f1"))).toBe(true);
+    expect(saved[saved.length - 1].reviewPosted).toBe(true);
   });
 });
 
