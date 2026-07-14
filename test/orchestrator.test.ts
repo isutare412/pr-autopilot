@@ -20,6 +20,10 @@ function mkOrch() {
     prState: async () => "OPEN",
     postReview: vi.fn(async () => ({ html_url: "http://x/r/1" })),
     requestReviewer: vi.fn(async () => {}),
+    // execute()'s zero-specs fast path asks GitHub directly before trusting our
+    // own bookkeeping (FINDING I-1) — a clean post with no pendingReviewId still
+    // calls this once to confirm no orphaned pending review is live.
+    findPendingReview: vi.fn(async () => null),
   };
   const orch = new Orchestrator({
     store, gh,

@@ -209,16 +209,29 @@ export async function execute(
 
   // 3. The review itself. With findings, every one becomes a thread on a pending
   //    review that is then submitted as a whole — one review, one notification.
-  //    With no findings AND no pending review already in flight, it's a bare REST
-  //    approve (or nothing at all). But a pendingReviewId already on the record
-  //    means *we* opened a draft on GitHub at some point — even zero current specs
-  //    must reconcile with it, or a REST review would land beside our own orphaned
-  //    PENDING review (GitHub allows only one pending review per user per PR).
+  //    With no findings, it's normally a bare REST approve (or nothing at all) —
+  //    but a pendingReviewId already on the record means *we* opened a draft on
+  //    GitHub at some point, so even zero current specs must reconcile with it
+  //    rather than take the fast path. And when we hold no pendingReviewId at
+  //    all, that alone does not prove none exists: a re-draft nulls postProgress
+  //    (see orchestrator.runGeneration) even when an earlier PENDING review —
+  //    possibly still carrying a thread — is live on GitHub, and a user can also
+  //    hand-write one in the browser. So the zero-specs branch below asks GitHub
+  //    directly before assuming the fast path is safe, rather than inferring
+  //    "no pending review" from our own bookkeeping.
   let reviewUrl: string | null = rec.postResult?.reviewUrl ?? null;
   if (!progress.reviewPosted) {
     const specs = buildThreadSpecs(draft);
 
     if (specs.length === 0 && !progress.pendingReviewId) {
+      if (await gh.findPendingReview(rec.owner, rec.repo, rec.number, login)) {
+        // Someone's pending review is live — ours from before a re-draft wiped
+        // our record of it, or the user's own hand-written draft. Landing a
+        // REST review beside it would violate GitHub's one-pending-review-per-
+        // user limit and, if it's our orphan, wedge every future post behind
+        // this same conflict until the user discards it by hand.
+        throw new Error(PENDING_REVIEW_CONFLICT);
+      }
       const payload = buildReviewPayload(rec, liveSha, verdict);
       if (payload) {
         const res = await gh.postReview(rec.owner, rec.repo, rec.number, payload);
@@ -234,12 +247,25 @@ export async function execute(
         const reviewId = target.reviewId;
 
         // Backstop: the draft may have changed after part of it was already
-        // attached — a finding dropped via the (now-locked) toggle API, or a
-        // re-draft from feedback that rewrote draft.findings outright. Either
-        // way, an id sitting in threadsAdded/threadsFailed that current specs no
-        // longer include is about to be submitted anyway, contradicting what the
-        // draft shows. Runs *after* reconcile: the discarded-draft branch above
-        // legitimately resets both lists, and that reset must win.
+        // attached — practically, a finding dropped or edited via the
+        // (now-locked) toggle/edit API is the only way an id can still slip
+        // through to here. It does NOT cover a re-draft from feedback: runGeneration
+        // nulls postProgress on every successful (re)generation, so
+        // threadsAdded/threadsFailed are wiped along with it — there is no stale
+        // id left for this check to catch. What actually protects a re-draft is
+        // reconcilePendingReview finding the old PENDING review still live (or,
+        // for a clean re-draft with zero specs, the findPendingReview check in
+        // the fast path above) and throwing PENDING_REVIEW_CONFLICT — and only
+        // when specs.length > 0 routes through reconcilePendingReview at all.
+        // Runs *after* reconcile: the discarded-draft branch above legitimately
+        // resets both lists, and that reset must win.
+        //
+        // Id-stability note: this compares finding *ids*, which come from the
+        // model's JSON and are not content-stable across drafts. That's sound
+        // today only because postProgress is always nulled on a re-draft and
+        // toggle/editItem are locked (draftLocked) once anything has landed — if
+        // a future change starts preserving postProgress across a re-draft,
+        // id reuse could defeat this comparison silently.
         const specIds = new Set(specs.map((s) => s.id));
         const attached = [...progress.threadsAdded, ...progress.threadsFailed];
         if (attached.some((id) => !specIds.has(id))) throw new Error(DRAFT_CHANGED_AFTER_POST);

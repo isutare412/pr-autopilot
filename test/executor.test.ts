@@ -823,3 +823,40 @@ describe("execute → pending review reconciled even with zero specs (FINDING 2)
     expect(out.postResult?.reviewUrl).toBe("http://x/r/landed");
   });
 });
+
+describe("execute → fast path re-asks GitHub before trusting our own bookkeeping (FINDING I-1)", () => {
+  /** The re-draft scenario: a partial post left a thread attached, then the ERROR
+   *  record regenerated (feedback, or the author pushing a fix) into a clean
+   *  draft — orchestrator.runGeneration nulls postProgress on every regeneration,
+   *  so nothing here remembers the orphaned PENDING review still live on GitHub.
+   *  The fast path must not infer "no pending review" from that null; it has to
+   *  ask GitHub directly, or a REST review lands beside the orphan. */
+  it("zero specs + no postProgress + a pending review live on GitHub → throws PENDING_REVIEW_CONFLICT, posts no REST review", async () => {
+    const { gh, rec } = ghReconcile("PRR_theirs");
+    const clean = baseRec();   // postProgress: null, as after a fresh (re)generation
+    clean.draft = { overallEn: "clean", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
+
+    await expect(execute(gh, clean, "me", "2026-07-14T00:00:00Z")).rejects.toThrow(PENDING_REVIEW_CONFLICT);
+
+    expect(rec.calls.some((c) => c.args.some((a) => a.includes("/pulls/65/reviews")))).toBe(false);
+    expect(rec.calls.some((c) => c.args.join(" ").includes("addPullRequestReview(input"))).toBe(false);
+    expect(submitCall(rec)).toBeUndefined();
+  });
+
+  /** Regression pin: the common case (no orphan on GitHub) must still take the
+   *  bare REST fast path exactly as before — the extra findPendingReview read
+   *  must not itself block or alter a clean post. */
+  it("zero specs + no pending review on GitHub → the REST bare LGTM fast path still fires", async () => {
+    const { gh, rec } = ghWith("SHA1");   // findPendingReview resolves to no live review
+    const clean = baseRec({ postVerdict: "approve" });
+    clean.draft = { overallEn: "clean", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
+
+    const out = await execute(gh, clean, "me", "2026-07-14T00:00:00Z");
+
+    const restReview = rec.calls.find((c) => c.args.some((a) => a.includes("/pulls/65/reviews")));
+    expect(restReview).toBeDefined();
+    expect(JSON.parse(restReview!.input!)).toMatchObject({ event: "APPROVE", body: "LGTM :+1:" });
+    expect(rec.calls.some((c) => c.args.join(" ").includes("addPullRequestReview(input"))).toBe(false);
+    expect(out.state).toBe("DONE");
+  });
+});
