@@ -337,10 +337,21 @@ export async function execute(
  *  Ignores the draft entirely — no replies, no resolves, no findings — so any open
  *  threads/comments are left exactly as they are. Approves the *live* head, so a
  *  STALE record just works (no STALE bail, unlike execute()). Only pre-flight is the
- *  open-PR check: a merged/closed PR becomes CLOSED rather than a failed approve. */
+ *  open-PR check: a merged/closed PR becomes CLOSED rather than a failed approve.
+ *
+ *  Both exits end the post cycle, so both spend the ledger (`postProgress: null`):
+ *  this is the *only* thing that ends a cycle without going through execute()'s own
+ *  `reviewPosted = true`, so it must clear the ledger itself or hasUnspentLedger
+ *  stays true forever — wedging every future regeneration entry point (poller.
+ *  decideWork, orchestrator's STALE recovery) even though the record is DONE/CLOSED
+ *  and nothing will ever spend it. A merged/closed PR is just as final as an
+ *  approve: nothing more can land on it, and if it is ever reopened that is a new
+ *  cycle that must start clean — same reasoning as the approve path below. */
 export async function forceApprove(gh: Gh, rec: PrRecord, nowIso: string): Promise<PrRecord> {
   const { state: prState, headSha: liveSha } = await gh.prStatus(rec.owner, rec.repo, rec.number);
-  if (prState !== "OPEN") return { ...rec, state: "CLOSED", forceApprove: false, updatedAt: nowIso };
+  if (prState !== "OPEN") {
+    return { ...rec, state: "CLOSED", postProgress: null, forceApprove: false, updatedAt: nowIso };
+  }
 
   const res = await gh.postReview(rec.owner, rec.repo, rec.number, {
     event: "APPROVE", body: APPROVE_BODY, commit_id: liveSha,
@@ -348,6 +359,6 @@ export async function forceApprove(gh: Gh, rec: PrRecord, nowIso: string): Promi
   return {
     ...rec, state: "DONE", postVerdict: "approve", headSha: liveSha,
     postResult: { reviewUrl: res.html_url, postedAt: nowIso, resolvedThreadIds: [] },
-    forceApprove: false, updatedAt: nowIso, doneAt: nowIso,
+    postProgress: null, forceApprove: false, updatedAt: nowIso, doneAt: nowIso,
   };
 }

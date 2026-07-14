@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { Gh, GhRunner } from "../src/main/core/gh";
+import { Gh, GhRunner, SearchPr } from "../src/main/core/gh";
 import {
   execute, buildReviewPayload, buildThreadSpecs, fileThreadBody, buildSubmitBody,
   defaultVerdict, forceApprove, isDiffRejection, PENDING_REVIEW_CONFLICT, DRAFT_CHANGED_AFTER_POST,
 } from "../src/main/core/executor";
+import { hasUnspentLedger } from "../src/main/core/api";
+import { decideWork } from "../src/main/core/poller";
 import type { PrRecord, PostProgress } from "../src/main/core/schema";
 
 function baseRec(over: Partial<PrRecord> = {}): PrRecord {
@@ -609,6 +611,60 @@ describe("forceApprove", () => {
     const out = await forceApprove(gh, baseRec({ state: "ERROR", draft: null }), "t");
     expect(out.state).toBe("DONE");
     expect(rec.calls.some((c) => c.args.some((a) => a.includes("/reviews")))).toBe(true);
+  });
+
+  it("spends an unspent ledger on the successful-approve path (regression: force-approve must not wedge future re-review)", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const r = baseRec({
+      state: "ERROR",
+      postProgress: progressWith({ repliedTargets: [111], pendingReviewId: "PRR_1", threadsAdded: ["f1"] }),
+    });
+    expect(hasUnspentLedger(r)).toBe(true);   // sanity: this record starts out wedged
+
+    const out = await forceApprove(gh, r, "2026-06-29T00:00:00Z");
+
+    expect(hasUnspentLedger(out)).toBe(false);   // the fix: the cycle is over, ledger is spent
+    expect(out.state).toBe("DONE");
+
+    // Still exactly one bare LGTM REST approve against the live head — unchanged behavior.
+    const reviewCalls = rec.calls.filter((c) => c.args.some((a) => a.includes("/reviews")));
+    expect(reviewCalls.length).toBe(1);
+    const payload = JSON.parse(reviewCalls[0].input!);
+    expect(payload).toEqual({ event: "APPROVE", body: "LGTM :+1:", commit_id: "SHA1" });
+  });
+
+  it("also spends an unspent ledger on the non-OPEN (merged/closed) exit — the cycle is over there too", async () => {
+    const { gh } = ghWith("SHA1", "MERGED");
+    const r = baseRec({
+      state: "ERROR",
+      postProgress: progressWith({ repliedTargets: [111], pendingReviewId: "PRR_1" }),
+    });
+    const out = await forceApprove(gh, r, "t");
+    expect(out.state).toBe("CLOSED");
+    expect(hasUnspentLedger(out)).toBe(false);
+  });
+
+  it("a force-approved DONE record whose author later re-requests review is picked up for regeneration, not wedged forever (the actual user-visible bug)", async () => {
+    const { gh } = ghWith("SHA1");
+    const r = baseRec({
+      key: "github.com/O/R#65", owner: "O", repo: "R", number: 65,
+      state: "ERROR", headSha: "SHA1", mode: "first-review",
+      postProgress: progressWith({ repliedTargets: [111], pendingReviewId: "PRR_1", threadsAdded: ["f1"] }),
+    });
+    const approved = await forceApprove(gh, r, "t");   // DONE, ledger spent by the fix above
+
+    // Later, the author pushes a fix and re-requests review: the PR reappears in the
+    // queue with an advanced head SHA. Before the fix, hasUnspentLedger(approved) would
+    // still be true (the ledger survived untouched), so decideWork would skip it forever.
+    const pr: SearchPr = { url: "http://x/O/R/pull/65", owner: "O", repo: "R", number: 65, title: "t65" };
+    const work = decideWork({
+      queue: [pr],
+      existing: new Map([[approved.key, approved]]),
+      liveHeads: new Map([[approved.key, "SHA2"]]),
+      authorRepliedKeys: new Set(),
+    });
+
+    expect(work.map((w) => w.key)).toEqual([approved.key]);
   });
 });
 
