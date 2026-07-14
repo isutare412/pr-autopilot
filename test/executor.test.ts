@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { Gh, GhRunner } from "../src/main/core/gh";
-import { execute, buildReviewPayload, defaultVerdict, forceApprove } from "../src/main/core/executor";
+import {
+  execute, buildReviewPayload, buildThreadSpecs, fileThreadBody, buildSubmitBody,
+  defaultVerdict, forceApprove,
+} from "../src/main/core/executor";
 import type { PrRecord } from "../src/main/core/schema";
 
 function baseRec(over: Partial<PrRecord> = {}): PrRecord {
@@ -37,40 +40,101 @@ function ghWith(headSha: string, state = "OPEN"): { gh: Gh; rec: Recorder } {
   return { gh: new Gh(rec, "github.com"), rec };
 }
 
-describe("buildReviewPayload", () => {
-  it("includes only included findings, COMMENT event, empty body", () => {
-    const p = buildReviewPayload(baseRec(), "SHA1") as any;
-    expect(p.event).toBe("COMMENT");
-    expect(p.body).toBe("");
-    expect(p.commit_id).toBe("SHA1");
-    expect(p.comments.length).toBe(1);
-    expect(p.comments[0].path).toBe("a.go");
+describe("buildThreadSpecs", () => {
+  it("includes only included findings", () => {
+    const specs = buildThreadSpecs(baseRec().draft!);   // f1 included, f2 dropped
+    expect(specs.length).toBe(1);
+    expect(specs[0].id).toBe("f1");
   });
 
-  it("uses editedBody over body", () => {
-    const r = baseRec();
-    r.draft!.findings[0].editedBody = "**[Critical]** edited";
-    expect((buildReviewPayload(r, "SHA1") as any).comments[0].body).toBe("**[Critical]** edited");
+  it("an anchorable finding gets a LINE attempt carrying line and side", () => {
+    const s = buildThreadSpecs(baseRec().draft!)[0];
+    expect(s.line).toEqual({
+      path: "a.go", body: "**[Critical]** leak", subjectType: "LINE", line: 142, side: "RIGHT",
+    });
   });
 
-  it("folds unanchorable findings into the body", () => {
-    const r = baseRec();
-    r.draft!.findings[0].anchorable = false;
-    const p = buildReviewPayload(r, "SHA1") as any;
-    expect(p.comments.length).toBe(0);
-    expect(p.body).toContain("a.go");
-    expect(p.body).toContain("leak");
+  it("a spanning finding carries startLine and startSide", () => {
+    const d = baseRec().draft!;
+    d.findings[0].startLine = 10;
+    d.findings[0].startSide = "RIGHT";
+    expect(buildThreadSpecs(d)[0].line).toMatchObject({ startLine: 10, startSide: "RIGHT", line: 142 });
   });
 
-  it("includes start_line/start_side for a spanning finding", () => {
-    const r = baseRec();
-    r.draft!.findings[0].startLine = 10;
-    r.draft!.findings[0].startSide = "RIGHT";
-    const p = buildReviewPayload(r, "SHA1") as any;
-    expect(p.comments[0].start_line).toBe(10);
-    expect(p.comments[0].start_side).toBe("RIGHT");
+  it("a spanning finding with no startSide falls back to the finding's side", () => {
+    const d = baseRec().draft!;
+    d.findings[0].startLine = 10;
+    d.findings[0].startSide = null;
+    expect(buildThreadSpecs(d)[0].line).toMatchObject({ startSide: "RIGHT" });
   });
 
+  it("an unanchorable finding gets no LINE attempt, only a FILE one", () => {
+    const d = baseRec().draft!;
+    d.findings[0].anchorable = false;
+    const s = buildThreadSpecs(d)[0];
+    expect(s.line).toBeNull();
+    expect(s.file.subjectType).toBe("FILE");
+    expect(s.file.path).toBe("a.go");
+    expect(s.file.line).toBeUndefined();
+  });
+
+  it("every spec carries a FILE fallback, even an anchorable one", () => {
+    const s = buildThreadSpecs(baseRec().draft!)[0];
+    expect(s.file.subjectType).toBe("FILE");
+    expect(s.file.body).toContain("line 142");   // the fallback body names the line
+  });
+
+  it("uses editedBody over body in both attempts", () => {
+    const d = baseRec().draft!;
+    d.findings[0].editedBody = "**[Critical]** edited";
+    const s = buildThreadSpecs(d)[0];
+    expect(s.line!.body).toBe("**[Critical]** edited");
+    expect(s.file.body).toContain("edited");
+  });
+});
+
+describe("fileThreadBody", () => {
+  it("prefixes the line, since a file-level thread has no line anchor", () => {
+    const f = baseRec().draft!.findings[0];    // line 142
+    expect(fileThreadBody(f)).toBe("`line 142`\n\n**[Critical]** leak");
+  });
+
+  it("prefixes a range for a spanning finding", () => {
+    const f = { ...baseRec().draft!.findings[0], startLine: 130 };
+    expect(fileThreadBody(f)).toBe("`lines 130–142`\n\n**[Critical]** leak");
+  });
+
+  it("omits the prefix when there is no meaningful line", () => {
+    const f = { ...baseRec().draft!.findings[0], line: 0 };
+    expect(fileThreadBody(f)).toBe("**[Critical]** leak");
+  });
+});
+
+describe("buildSubmitBody", () => {
+  it("an approve with nothing failed is just the LGTM line", () => {
+    expect(buildSubmitBody("approve", [])).toBe("LGTM :+1:");
+  });
+
+  it("a comment with nothing failed is empty", () => {
+    expect(buildSubmitBody("comment", [])).toBe("");
+  });
+
+  it("folds a failed finding under the LGTM, labeled with its location", () => {
+    const f = baseRec().draft!.findings[0];
+    const body = buildSubmitBody("approve", [f]);
+    expect(body).toContain("LGTM :+1:");
+    expect(body).toContain("a.go:142 — **[Critical]** leak");
+  });
+
+  it("prefers editedBody in the fold", () => {
+    const f = { ...baseRec().draft!.findings[0], editedBody: "**[Critical]** edited" };
+    expect(buildSubmitBody("comment", [f])).toContain("edited");
+  });
+});
+
+// These two survive the Task 5 shrink unchanged — they pin the only cases
+// buildReviewPayload will still be responsible for.
+describe("buildReviewPayload (zero-findings cases)", () => {
   it("emits APPROVE + LGTM when there are zero findings", () => {
     const r = baseRec();
     r.draft = { overallEn: "clean", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
@@ -80,37 +144,10 @@ describe("buildReviewPayload", () => {
     expect(p.comments).toBeUndefined();
   });
 
-  it("approve verdict with findings → APPROVE that still carries the comments", () => {
-    const p = buildReviewPayload(baseRec(), "SHA1", "approve") as any;
-    expect(p.event).toBe("APPROVE");
-    expect(p.comments.length).toBe(1);
-  });
-
-  it("comment verdict with zero findings → null (nothing to post; replies/resolves carry it)", () => {
+  it("comment verdict with zero findings → null (replies/resolves carry it)", () => {
     const r = baseRec();
     r.draft = { overallEn: "re-review", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
     expect(buildReviewPayload(r, "SHA1", "comment")).toBeNull();
-  });
-
-  it("approve with nit findings → APPROVE led by LGTM, nit attached inline", () => {
-    const r = baseRec();
-    r.draft!.findings = [{ ...r.draft!.findings[1], included: true }]; // Nit, anchorable
-    const p = buildReviewPayload(r, "SHA1") as any;                    // default verdict → approve
-    expect(p.event).toBe("APPROVE");
-    expect(p.body).toBe("LGTM :+1:");
-    expect(p.comments.length).toBe(1);
-    expect(p.comments[0].path).toBe("b.go");
-  });
-
-  it("approve with an unanchorable nit → body carries LGTM and the nit text", () => {
-    const r = baseRec();
-    r.draft!.findings = [{ ...r.draft!.findings[1], included: true, anchorable: false }];
-    const p = buildReviewPayload(r, "SHA1") as any;
-    expect(p.event).toBe("APPROVE");
-    expect(p.comments.length).toBe(0);
-    expect(p.body).toContain("LGTM :+1:");
-    expect(p.body).toContain("b.go");   // f2 path
-    expect(p.body).toContain("name");   // f2 body is "**[Nit]** name"
   });
 });
 

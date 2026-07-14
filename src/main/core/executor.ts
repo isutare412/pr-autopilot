@@ -1,7 +1,59 @@
-import { Gh } from "./gh";
-import { Draft, PrRecord, PostProgress, PostVerdict } from "./schema";
+import { Gh, ReviewThreadInput } from "./gh";
+import { Draft, Finding, PrRecord, PostProgress, PostVerdict } from "./schema";
 
 const APPROVE_BODY = "LGTM :+1:";
+
+/** A finding's two ways onto the PR. `line` is the precise inline thread; `file`
+ *  is the whole-file thread — the honest fallback when GitHub won't anchor to the
+ *  line, which it refuses for anything outside the diff hunks. Every spec carries
+ *  a `file` attempt so a mis-marked `anchorable` can still land as a thread. */
+export interface ThreadSpec {
+  id: string;
+  line: ReviewThreadInput | null;
+  file: ReviewThreadInput;
+}
+
+/** A file-level thread renders under the file, not a line — so the line has to
+ *  survive in the text or the reader can't tell what the comment is about. */
+export function fileThreadBody(f: Finding): string {
+  const body = f.editedBody ?? f.body;
+  if (!Number.isFinite(f.line) || f.line <= 0) return body;
+  const loc = f.startLine != null && f.startLine !== f.line
+    ? `\`lines ${f.startLine}–${f.line}\``
+    : `\`line ${f.line}\``;
+  return `${loc}\n\n${body}`;
+}
+
+export function buildThreadSpecs(draft: Draft): ThreadSpec[] {
+  return draft.findings.filter((f) => f.included).map((f) => {
+    const file: ReviewThreadInput = {
+      path: f.path, body: fileThreadBody(f), subjectType: "FILE",
+    };
+    if (!f.anchorable) return { id: f.id, line: null, file };
+
+    const line: ReviewThreadInput = {
+      path: f.path, body: f.editedBody ?? f.body, subjectType: "LINE",
+      line: f.line, side: f.side,
+    };
+    if (f.startLine != null) {
+      line.startLine = f.startLine;
+      line.startSide = f.startSide ?? f.side;
+    }
+    return { id: f.id, line, file };
+  });
+}
+
+/** The submitted review's body. An APPROVE leads with the LGTM line. `failed` holds
+ *  the findings GitHub refused as *both* a line thread and a file thread — the last
+ *  resort, so they still ship rather than being dropped. It is normally empty. */
+export function buildSubmitBody(verdict: PostVerdict, failed: Finding[]): string {
+  const folded = failed
+    .map((f) => `${f.path}:${f.line} — ${f.editedBody ?? f.body}`)
+    .join("\n\n");
+  return verdict === "approve"
+    ? [APPROVE_BODY, folded].filter(Boolean).join("\n\n")
+    : folded;
+}
 
 /** Default disposition when the user didn't pick one (automated mode, or a
  *  resumed post from before verdicts existed). Route on severity, not mere
