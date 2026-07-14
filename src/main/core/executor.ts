@@ -174,7 +174,16 @@ export async function execute(
   // then the head-SHA staleness check. Both come from one gh call.
   const { state: prState, headSha: liveSha, nodeId } = await gh.prStatus(rec.owner, rec.repo, rec.number);
   if (prState !== "OPEN") {
-    return { ...rec, state: "CLOSED", updatedAt: nowIso };
+    // Spend the ledger here too, for exactly the reason forceApprove's non-OPEN exit
+    // does: the PR is gone, so this cycle can never be completed and the ledger can
+    // never be spent by the normal route (`reviewPosted = true` below never runs).
+    // CLOSED offers neither of the ledger's two escapes — Retry post requires
+    // NEEDS_REVIEW/ERROR, force-approve requires POSTED_AWAITING_AUTHOR/STALE/ERROR —
+    // so an unspent ledger surviving into CLOSED would wedge the record forever,
+    // silently skipped by every regeneration gate (hasUnspentLedger) until
+    // store.prune eventually deletes it. If the PR is later reopened, that is a new
+    // cycle and must start clean, same reasoning as forceApprove.
+    return { ...rec, state: "CLOSED", postProgress: null, updatedAt: nowIso };
   }
   if (liveSha !== rec.headSha) {
     return { ...rec, state: "STALE", updatedAt: nowIso };

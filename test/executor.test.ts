@@ -355,6 +355,32 @@ describe("execute", () => {
     expect(out.state).toBe("CLOSED");
   });
 
+  it("FINDING I-1: a CLOSED record spends an unspent ledger, so a reopened+pushed PR is not wedged forever", async () => {
+    const { gh } = ghWith("SHA1", "CLOSED");
+    const r = baseRec({
+      postProgress: progressWith({ repliedTargets: [111], pendingReviewId: "PRR_1", threadsAdded: ["f1"] }),
+    });
+    const out = await execute(gh, r, "me", "2026-06-29T00:00:00Z");
+
+    expect(out.state).toBe("CLOSED");
+    // CLOSED offers neither of the ledger's two escapes (Retry post, force-approve),
+    // so an unspent ledger surviving here would be un-spendable forever.
+    expect(hasUnspentLedger(out)).toBe(false);
+
+    // The author reopens the PR and pushes. Before this fix, decideWork's
+    // hasUnspentLedger gate would still see this record as unspent and skip it —
+    // silently, forever, with no banner — even though the PR is open and moving
+    // again. Pin that it is now picked back up.
+    const pr = { owner: "O", repo: "R", number: 65, url: "http://x", title: "t" };
+    const work = decideWork({
+      queue: [pr],
+      existing: new Map([[out.key, out]]),
+      liveHeads: new Map([[out.key, "SHA2"]]),
+      authorRepliedKeys: new Set(),
+    });
+    expect(work.map((w) => w.key)).toContain(out.key);
+  });
+
   it("DONE + no re-request on a clean LGTM", async () => {
     const { gh, rec } = ghWith("SHA1");
     const clean = baseRec();

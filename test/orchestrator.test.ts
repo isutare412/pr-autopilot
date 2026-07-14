@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../src/main/core/store";
 import { Orchestrator, POST_STALLED_MID_CYCLE } from "../src/main/core/orchestrator";
+import { hasUnspentLedger } from "../src/main/core/api";
 import type { Draft, PrRecord, VerifyItem } from "../src/main/core/schema";
 
 const draft: Draft = { overallEn: "o", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
@@ -414,6 +415,34 @@ describe("Orchestrator — poll sweep", () => {
     (orch as any).d.gh.prState = async () => { throw new Error("boom"); };
     await orch.runPoll();
     expect(store.get(key)!.state).toBe("NEEDS_REVIEW");
+  });
+
+  it("FINDING I-1: the closed-sweep spends an unspent ledger too, so a reopened+pushed PR is not wedged forever", async () => {
+    const { orch, store } = mkOrch();
+    const key = seed(store, 33, "POSTED_AWAITING_AUTHOR", {
+      draft, draftVersion: 1,
+      postProgress: {
+        sent: { repliedTargets: [111], resolvedThreads: [] },
+        review: { pendingReviewId: "PRR_1", threadsAdded: [], threadsFailed: [] },
+        reviewPosted: false, reviewerRequested: false,
+      },
+    });
+    (orch as any).d.gh.prState = async () => "MERGED";
+    await orch.runPoll();
+
+    const closed = store.get(key)!;
+    expect(closed.state).toBe("CLOSED");
+    expect(hasUnspentLedger(closed)).toBe(false);
+
+    // Reopened and pushed: decideWork must pick it back up, not skip it forever.
+    (orch as any).d.gh.searchReviewRequested = async () => [
+      { owner: "O", repo: "R", number: 33, url: "http://x/O/R/pull/33", title: "t" },
+    ];
+    (orch as any).d.gh.headSha = async () => "SHA2";
+    (orch as any).d.gh.prState = async () => "OPEN";
+    const genSpy = vi.spyOn(orch.genQueue, "submit").mockImplementation(() => {});
+    await orch.runPoll();
+    expect(genSpy).toHaveBeenCalledWith(key, expect.any(Function));
   });
 });
 

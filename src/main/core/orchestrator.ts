@@ -278,7 +278,11 @@ export class Orchestrator {
           await this.store.withLock(key, async () => {
             const cur = this.store.get(key);
             if (cur && (cur.state === "NEEDS_REVIEW" || cur.state === "POSTED_AWAITING_AUTHOR")) {
-              this.store.put({ ...cur, state: "CLOSED", updatedAt: this.d.nowIso() });
+              // Same reasoning as execute()'s non-OPEN exit and forceApprove's: the PR
+              // is gone, so any unspent ledger here can never be spent, and CLOSED
+              // offers neither of its two escapes — spend it now rather than wedge the
+              // record forever. A later reopen is a new cycle and starts clean.
+              this.store.put({ ...cur, state: "CLOSED", postProgress: null, updatedAt: this.d.nowIso() });
             }
           });
         }
