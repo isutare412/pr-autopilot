@@ -3,8 +3,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../src/main/core/store";
-import { api, ApiDeps } from "../src/main/core/api";
-import type { PrRecord } from "../src/main/core/schema";
+import { api, ApiDeps, draftLocked, DRAFT_LOCKED_MESSAGE } from "../src/main/core/api";
+import type { PrRecord, PostProgress } from "../src/main/core/schema";
 
 function seed(store: Store): PrRecord {
   const rec: PrRecord = {
@@ -44,6 +44,61 @@ describe("api", () => {
     const out = api.editItem(deps, "github.com/O/R#65", "#1", "**[Nit]** edited") as PrRecord;
     expect(out.draft!.findings[0].editedBody).toBe("**[Nit]** edited");
     expect(deps.store.get("github.com/O/R#65")!.draft!.findings[0].editedBody).toBe("**[Nit]** edited");
+  });
+
+  function progress(over: Partial<PostProgress> = {}): PostProgress {
+    return {
+      repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
+      pendingReviewId: null, threadsAdded: [], threadsFailed: [], ...over,
+    };
+  }
+
+  it("draftLocked is true once a pending review holds attached findings, not yet submitted", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    expect(draftLocked(rec)).toBe(false);   // postProgress null
+    rec.postProgress = progress({ pendingReviewId: "PRR_1", threadsAdded: ["f1"] });
+    expect(draftLocked(rec)).toBe(true);
+    rec.postProgress = progress({ pendingReviewId: "PRR_1", threadsAdded: ["f1"], reviewPosted: true });
+    expect(draftLocked(rec)).toBe(false);   // already submitted — unlocked again
+  });
+
+  it("toggleItem is rejected while the draft is locked, and leaves the item unchanged", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    rec.postProgress = progress({ pendingReviewId: "PRR_1", threadsAdded: ["f1"] });
+    deps.store.put(rec);
+    const out = api.toggleItem(deps, "github.com/O/R#65", "#1", false);
+    expect(out).toEqual({ error: DRAFT_LOCKED_MESSAGE });
+    expect(deps.store.get("github.com/O/R#65")!.draft!.findings[0].included).toBe(true);
+  });
+
+  it("editItem is rejected while the draft is locked, and leaves the item unchanged", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    rec.postProgress = progress({ pendingReviewId: "PRR_1", threadsAdded: ["f1"] });
+    deps.store.put(rec);
+    const out = api.editItem(deps, "github.com/O/R#65", "#1", "edited body");
+    expect(out).toEqual({ error: DRAFT_LOCKED_MESSAGE });
+    expect(deps.store.get("github.com/O/R#65")!.draft!.findings[0].editedBody).toBeNull();
+  });
+
+  it("toggleItem and editItem still work when postProgress carries no pendingReviewId", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    rec.postProgress = progress();   // pendingReviewId null
+    deps.store.put(rec);
+    expect((api.toggleItem(deps, "github.com/O/R#65", "#1", false) as PrRecord).draft!.findings[0].included).toBe(false);
+    expect((api.editItem(deps, "github.com/O/R#65", "#1", "edited") as PrRecord).draft!.findings[0].editedBody).toBe("edited");
+  });
+
+  it("toggleItem and editItem work again once the review has been submitted", () => {
+    const { deps } = mkDeps();
+    const rec = deps.store.get("github.com/O/R#65")!;
+    rec.postProgress = progress({ pendingReviewId: "PRR_1", threadsAdded: ["f1"], reviewPosted: true });
+    deps.store.put(rec);
+    expect((api.toggleItem(deps, "github.com/O/R#65", "#1", false) as PrRecord).draft!.findings[0].included).toBe(false);
+    expect((api.editItem(deps, "github.com/O/R#65", "#1", "edited") as PrRecord).draft!.findings[0].editedBody).toBe("edited");
   });
 
   it("toggleItem flips included on a verify item", () => {

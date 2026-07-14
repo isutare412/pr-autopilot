@@ -6,6 +6,15 @@ const APPROVE_BODY = "LGTM :+1:";
 export const PENDING_REVIEW_CONFLICT =
   "An unsubmitted pending review already exists on this PR — submit or discard it on GitHub, then retry.";
 
+/** Thrown when the current draft no longer matches what is already attached to the
+ *  pending review — e.g. a finding was dropped (or a re-draft rewrote the findings)
+ *  after its thread had already landed on GitHub. Submitting now would ship that
+ *  stale thread anyway, silently contradicting what the draft shows. There is no
+ *  safe automatic recovery (deleting the review could destroy a hand-written draft;
+ *  see reconcilePendingReview), so this aborts and tells the user what to do. */
+export const DRAFT_CHANGED_AFTER_POST =
+  "The draft changed after part of it was already attached to a review on GitHub — discard the draft review on GitHub, then retry.";
+
 /** A finding's two ways onto the PR. `line` is the precise inline thread; `file`
  *  is the whole-file thread — the honest fallback when GitHub won't anchor to the
  *  line, which it refuses for anything outside the diff hunks. Every spec carries
@@ -200,12 +209,16 @@ export async function execute(
 
   // 3. The review itself. With findings, every one becomes a thread on a pending
   //    review that is then submitted as a whole — one review, one notification.
-  //    With no findings it's a bare REST approve (or nothing at all).
+  //    With no findings AND no pending review already in flight, it's a bare REST
+  //    approve (or nothing at all). But a pendingReviewId already on the record
+  //    means *we* opened a draft on GitHub at some point — even zero current specs
+  //    must reconcile with it, or a REST review would land beside our own orphaned
+  //    PENDING review (GitHub allows only one pending review per user per PR).
   let reviewUrl: string | null = rec.postResult?.reviewUrl ?? null;
   if (!progress.reviewPosted) {
     const specs = buildThreadSpecs(draft);
 
-    if (specs.length === 0) {
+    if (specs.length === 0 && !progress.pendingReviewId) {
       const payload = buildReviewPayload(rec, liveSha, verdict);
       if (payload) {
         const res = await gh.postReview(rec.owner, rec.repo, rec.number, payload);
@@ -220,6 +233,17 @@ export async function execute(
       } else {
         const reviewId = target.reviewId;
 
+        // Backstop: the draft may have changed after part of it was already
+        // attached — a finding dropped via the (now-locked) toggle API, or a
+        // re-draft from feedback that rewrote draft.findings outright. Either
+        // way, an id sitting in threadsAdded/threadsFailed that current specs no
+        // longer include is about to be submitted anyway, contradicting what the
+        // draft shows. Runs *after* reconcile: the discarded-draft branch above
+        // legitimately resets both lists, and that reset must win.
+        const specIds = new Set(specs.map((s) => s.id));
+        const attached = [...progress.threadsAdded, ...progress.threadsFailed];
+        if (attached.some((id) => !specIds.has(id))) throw new Error(DRAFT_CHANGED_AFTER_POST);
+
         for (const spec of specs) {
           if (progress.threadsAdded.includes(spec.id) || progress.threadsFailed.includes(spec.id)) continue;
           const landed = await addThreadWithFallback(gh, reviewId, spec);
@@ -228,10 +252,17 @@ export async function execute(
         }
 
         const failed = draft.findings.filter((f) => progress.threadsFailed.includes(f.id));
-        const res = await gh.submitReview(
-          reviewId, verdict === "approve" ? "APPROVE" : "COMMENT", buildSubmitBody(verdict, failed),
-        );
-        reviewUrl = res.url;
+        const body = buildSubmitBody(verdict, failed);
+        // A submit with no threads and an empty body is rejected by GitHub. An
+        // approve always has the LGTM line, so it is never empty; a comment with
+        // nothing attached and nothing to say submits nothing, same as today's
+        // no-findings behavior — the pending review (if any) is left untouched,
+        // never deleted.
+        const hasContent = progress.threadsAdded.length > 0 || progress.threadsFailed.length > 0 || body.length > 0;
+        if (hasContent) {
+          const res = await gh.submitReview(reviewId, verdict === "approve" ? "APPROVE" : "COMMENT", body);
+          reviewUrl = res.url;
+        }
       }
     }
 

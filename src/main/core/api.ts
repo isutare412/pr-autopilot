@@ -12,6 +12,19 @@ export interface ApiDeps {
 type Err = { error: string };
 const NF: Err = { error: "not found" };
 
+export const DRAFT_LOCKED_MESSAGE =
+  "Some findings are already attached to a draft review on GitHub. Retry the post to send the rest, or discard the draft review on GitHub.";
+const LOCKED: Err = { error: DRAFT_LOCKED_MESSAGE };
+
+/** True once a post has attached at least one finding to a pending review on
+ *  GitHub and hasn't submitted it yet. Dropping a finding or editing its body
+ *  past this point cannot un-post what already landed — see executor.ts's
+ *  DRAFT_CHANGED_AFTER_POST backstop for the mirror case where the draft changes
+ *  by some other path (e.g. a re-draft from feedback). */
+export function draftLocked(rec: PrRecord): boolean {
+  return rec.postProgress?.pendingReviewId != null && !rec.postProgress.reviewPosted;
+}
+
 function findItem(rec: PrRecord, ref: string) {
   return rec.draft?.findings.find((f) => f.ref === ref) ?? rec.draft?.verify.find((v) => v.ref === ref);
 }
@@ -33,6 +46,7 @@ export const api = {
   toggleItem(deps: ApiDeps, key: string, ref: string, included: boolean): PrRecord | Err {
     const rec = deps.store.get(key);
     if (!rec) return NF;
+    if (draftLocked(rec)) return LOCKED;
     const item = findItem(rec, ref);
     if (!item) return { error: "item not found" };
     item.included = included;
@@ -44,6 +58,7 @@ export const api = {
   editItem(deps: ApiDeps, key: string, ref: string, editedBody: string | null): PrRecord | Err {
     const rec = deps.store.get(key);
     if (!rec) return NF;
+    if (draftLocked(rec)) return LOCKED;
     const item = findItem(rec, ref);
     if (!item) return { error: "item not found" };
     item.editedBody = editedBody;

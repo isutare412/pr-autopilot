@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { Gh, GhRunner } from "../src/main/core/gh";
 import {
   execute, buildReviewPayload, buildThreadSpecs, fileThreadBody, buildSubmitBody,
-  defaultVerdict, forceApprove, isDiffRejection, PENDING_REVIEW_CONFLICT,
+  defaultVerdict, forceApprove, isDiffRejection, PENDING_REVIEW_CONFLICT, DRAFT_CHANGED_AFTER_POST,
 } from "../src/main/core/executor";
 import type { PrRecord, PostProgress } from "../src/main/core/schema";
 
@@ -722,5 +722,104 @@ describe("execute → pending-review reconciliation", () => {
     const { gh, rec } = ghReconcile("PRR_theirs");
     await expect(execute(gh, baseRec(), "me", "2026-07-14T00:00:00Z")).rejects.toThrow();
     expect(rec.calls.some((c) => c.args.join(" ").includes("deletePullRequestReview"))).toBe(false);
+  });
+});
+
+describe("execute → draft-changed-after-post backstop (FINDING 1)", () => {
+  /** The CRITICAL scenario end-to-end: f1's thread already landed on the pending
+   *  review (threadsAdded persisted), then f1 is dropped from the draft (as the
+   *  api.ts lock is meant to prevent going forward, but this pins the executor's
+   *  own backstop for every other path a draft can change). Retrying must throw
+   *  before touching GitHub again — submitting now would ship f1's thread anyway,
+   *  contradicting what the draft shows. */
+  it("a finding already attached, then dropped from the draft, makes execute() throw and submit nothing", async () => {
+    const { gh, rec } = ghReconcile(null, { state: "PENDING", url: "http://x/r/1" });
+    const r = baseRec();
+    r.draft!.findings[0].included = false;   // f1 dropped after its thread was already added
+    r.postProgress = progressWith({ pendingReviewId: "PRR_1", threadsAdded: ["f1"] });
+
+    await expect(execute(gh, r, "me", "2026-07-14T00:00:00Z")).rejects.toThrow(DRAFT_CHANGED_AFTER_POST);
+    expect(threadCalls(rec).length).toBe(0);
+    expect(rec.calls.filter((c) => c.args.join(" ").includes("submitPullRequestReview")).length).toBe(0);
+  });
+
+  it("an id in threadsFailed that the current draft no longer includes also trips the backstop", async () => {
+    const { gh, rec } = ghReconcile(null, { state: "PENDING", url: "http://x/r/1" });
+    const r = baseRec();
+    r.draft!.findings = [
+      { id: "f1", ref: "#1", path: "a.go", line: 142, side: "RIGHT", startLine: null, startSide: null,
+        anchorable: true, priority: "Critical", body: "**[Critical]** leak", suggestion: null,
+        included: true, editedBody: null },
+    ];
+    r.postProgress = progressWith({ pendingReviewId: "PRR_1", threadsFailed: ["f2"] });   // f2 no longer in the draft at all
+
+    await expect(execute(gh, r, "me", "2026-07-14T00:00:00Z")).rejects.toThrow(DRAFT_CHANGED_AFTER_POST);
+    expect(rec.calls.filter((c) => c.args.join(" ").includes("submitPullRequestReview")).length).toBe(0);
+  });
+
+  it("a stored id whose attached findings still match the current draft does not trip the backstop", async () => {
+    const { gh, rec } = ghReconcile("PRR_1", { state: "PENDING", url: "http://x/r/1" });
+    const r = baseRec();   // f1 included, f2 excluded — unchanged from when f1 was attached
+    r.postProgress = progressWith({ pendingReviewId: "PRR_1", threadsAdded: ["f1"] });
+    const out = await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+    expect(out.state).not.toBe("ERROR");
+    expect(submitCall(rec)).toBeDefined();
+  });
+});
+
+describe("execute → pending review reconciled even with zero specs (FINDING 2)", () => {
+  it("no pendingReviewId and zero specs still takes the REST fast path, unchanged", async () => {
+    const { gh, rec } = ghWith("SHA1");
+    const clean = baseRec({ postVerdict: "approve" });
+    clean.draft = { overallEn: "clean", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
+    const out = await execute(gh, clean, "me", "2026-07-14T00:00:00Z");
+    const restReview = rec.calls.find((c) => c.args.some((a) => a.includes("/pulls/65/reviews")));
+    expect(restReview).toBeDefined();
+    expect(rec.calls.some((c) => c.args.join(" ").includes("addPullRequestReview(input"))).toBe(false);
+    expect(out.state).toBe("DONE");
+  });
+
+  it("pendingReviewId set + zero specs + approve → submits the pending review with LGTM, opens no REST review", async () => {
+    const { gh, rec } = ghReconcile(null, { state: "PENDING", url: "http://x/r/1" });
+    const r = baseRec({ postVerdict: "approve" });
+    r.draft = { overallEn: "clean now", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
+    r.postProgress = progressWith({ pendingReviewId: "PRR_1" });
+
+    const out = await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+
+    expect(threadCalls(rec).length).toBe(0);
+    expect(argValue(submitCall(rec)!, "event")).toBe("APPROVE");
+    expect(argValue(submitCall(rec)!, "body")).toBe("LGTM :+1:");
+    expect(rec.calls.some((c) => c.args.some((a) => a.includes("/pulls/65/reviews")))).toBe(false);   // no REST review alongside
+    expect(out.state).toBe("DONE");
+    expect(out.postResult?.reviewUrl).toBe("http://x/r/1");
+  });
+
+  it("pendingReviewId set + zero specs + comment with nothing to say → posts no review, no orphan created alongside", async () => {
+    const { gh, rec } = ghReconcile(null, { state: "PENDING", url: "http://x/r/1" });
+    const r = baseRec({ mode: "re-review", postVerdict: "comment" });
+    r.draft = { overallEn: "re-review, nothing left", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
+    r.postProgress = progressWith({ pendingReviewId: "PRR_1" });
+
+    const out = await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+
+    expect(threadCalls(rec).length).toBe(0);
+    expect(submitCall(rec)).toBeUndefined();
+    expect(rec.calls.some((c) => c.args.some((a) => a.includes("/pulls/65/reviews")))).toBe(false);
+    expect(out.state).toBe("POSTED_AWAITING_AUTHOR");
+    expect(out.postProgress?.reviewPosted).toBe(true);   // resume won't retry a no-op forever
+  });
+
+  it("a landed review recovered via reconcile with zero specs opens no REST review either", async () => {
+    const { gh, rec } = ghReconcile(null, { state: "APPROVED", url: "http://x/r/landed" });
+    const r = baseRec({ postVerdict: "approve" });
+    r.draft = { overallEn: "clean", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] };
+    r.postProgress = progressWith({ pendingReviewId: "PRR_1" });
+
+    const out = await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+
+    expect(rec.calls.some((c) => c.args.some((a) => a.includes("/pulls/65/reviews")))).toBe(false);
+    expect(submitCall(rec)).toBeUndefined();
+    expect(out.postResult?.reviewUrl).toBe("http://x/r/landed");
   });
 });
