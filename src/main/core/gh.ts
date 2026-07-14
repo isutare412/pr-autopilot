@@ -48,6 +48,53 @@ query($owner:String!,$repo:String!,$number:Int!){
   }
 }`;
 
+const ADD_REVIEW = `
+mutation($prId:ID!,$oid:GitObjectID!){
+  addPullRequestReview(input:{pullRequestId:$prId,commitOID:$oid}){
+    pullRequestReview{ id }
+  }
+}`;
+
+const ADD_THREAD = `
+mutation($rid:ID!,$path:String!,$body:String!,$subject:PullRequestReviewThreadSubjectType!,
+         $line:Int,$side:DiffSide,$startLine:Int,$startSide:DiffSide){
+  addPullRequestReviewThread(input:{
+    pullRequestReviewId:$rid, path:$path, body:$body, subjectType:$subject,
+    line:$line, side:$side, startLine:$startLine, startSide:$startSide
+  }){ thread{ id } }
+}`;
+
+const SUBMIT_REVIEW = `
+mutation($rid:ID!,$event:PullRequestReviewEvent!,$body:String){
+  submitPullRequestReview(input:{pullRequestReviewId:$rid,event:$event,body:$body}){
+    pullRequestReview{ url }
+  }
+}`;
+
+const PENDING_REVIEW_QUERY = `
+query($owner:String!,$repo:String!,$number:Int!,$author:String!){
+  repository(owner:$owner,name:$repo){
+    pullRequest(number:$number){
+      reviews(first:1,states:PENDING,author:$author){ nodes{ id } }
+    }
+  }
+}`;
+
+/** One review thread to attach to a pending review. `subjectType: "FILE"` anchors
+ *  the thread to the whole file — the only way to comment on a line GitHub won't
+ *  accept inline (anything outside the diff hunks). Line fields are omitted for
+ *  FILE threads; per the GraphQL spec an unsupplied variable is left out of the
+ *  input object entirely, so the same mutation serves both subject types. */
+export interface ReviewThreadInput {
+  path: string;
+  body: string;
+  subjectType: "LINE" | "FILE";
+  line?: number;
+  side?: "RIGHT" | "LEFT";
+  startLine?: number;
+  startSide?: "RIGHT" | "LEFT";
+}
+
 export class Gh {
   constructor(private runner: GhRunner, private host: string) {}
 
@@ -163,5 +210,50 @@ export class Gh {
       "-X", "POST", `/repos/${owner}/${repo}/pulls/${number}/requested_reviewers`,
       "-f", `reviewers[]=${login}`,
     ]);
+  }
+
+  /** Open a PENDING review (no `event` → not submitted, invisible to the author). */
+  async createPendingReview(prNodeId: string, commitOid: string): Promise<string> {
+    const out = await this.api([
+      "graphql", "-f", `prId=${prNodeId}`, "-f", `oid=${commitOid}`, "-f", `query=${ADD_REVIEW}`,
+    ]);
+    return JSON.parse(out).data.addPullRequestReview.pullRequestReview.id as string;
+  }
+
+  async addReviewThread(reviewId: string, input: ReviewThreadInput): Promise<void> {
+    const args = [
+      "graphql",
+      "-f", `rid=${reviewId}`,
+      "-f", `path=${input.path}`,
+      "-f", `body=${input.body}`,
+      "-f", `subject=${input.subjectType}`,
+    ];
+    // -F sends a typed literal (Int); -f sends a string. Unsupplied variables are
+    // omitted from the input object, which is exactly what a FILE thread needs.
+    if (input.line != null) args.push("-F", `line=${input.line}`);
+    if (input.side) args.push("-f", `side=${input.side}`);
+    if (input.startLine != null) args.push("-F", `startLine=${input.startLine}`);
+    if (input.startSide) args.push("-f", `startSide=${input.startSide}`);
+    args.push("-f", `query=${ADD_THREAD}`);
+    await this.api(args);
+  }
+
+  async submitReview(reviewId: string, event: "APPROVE" | "COMMENT", body: string): Promise<{ url: string }> {
+    const out = await this.api([
+      "graphql", "-f", `rid=${reviewId}`, "-f", `event=${event}`, "-f", `body=${body}`,
+      "-f", `query=${SUBMIT_REVIEW}`,
+    ]);
+    return { url: JSON.parse(out).data.submitPullRequestReview.pullRequestReview.url as string };
+  }
+
+  /** The caller's own unsubmitted review on this PR, if any. GitHub allows exactly
+   *  one per user per PR, so this is how a crashed post finds its way back. */
+  async findPendingReview(owner: string, repo: string, number: number, login: string): Promise<string | null> {
+    const out = await this.api([
+      "graphql", "-f", `owner=${owner}`, "-f", `repo=${repo}`,
+      "-F", `number=${number}`, "-f", `author=${login}`, "-f", `query=${PENDING_REVIEW_QUERY}`,
+    ]);
+    const nodes = JSON.parse(out).data.repository.pullRequest.reviews.nodes as { id: string }[];
+    return nodes[0]?.id ?? null;
   }
 }

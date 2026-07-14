@@ -73,4 +73,86 @@ describe("Gh", () => {
     expect(s).toEqual({ state: "OPEN", headSha: "SHA1", nodeId: "PR_node1" });
     expect(r.calls[0].args).toContain("state,headRefOid,id");
   });
+
+  it("createPendingReview creates a review with no event and returns its id", async () => {
+    const r = new FakeRunner(() =>
+      JSON.stringify({ data: { addPullRequestReview: { pullRequestReview: { id: "PRR_1" } } } }));
+    const gh = new Gh(r, "github.com");
+    expect(await gh.createPendingReview("PR_node1", "SHA1")).toBe("PRR_1");
+    const joined = r.calls[0].args.join(" ");
+    expect(joined).toContain("addPullRequestReview");
+    expect(joined).not.toContain("event:");          // omitting event is what leaves it PENDING
+    expect(r.calls[0].args).toContain("prId=PR_node1");
+    expect(r.calls[0].args).toContain("oid=SHA1");
+  });
+
+  it("addReviewThread sends a LINE thread with line and side", async () => {
+    const r = new FakeRunner(() => JSON.stringify({ data: {} }));
+    const gh = new Gh(r, "github.com");
+    await gh.addReviewThread("PRR_1", {
+      path: "a.go", body: "**[Nit]** x", subjectType: "LINE", line: 142, side: "RIGHT",
+    });
+    const a = r.calls[0].args;
+    expect(a.join(" ")).toContain("addPullRequestReviewThread");
+    expect(a).toContain("rid=PRR_1");
+    expect(a).toContain("path=a.go");
+    expect(a).toContain("subject=LINE");
+    expect(a).toContain("line=142");
+    expect(a).toContain("side=RIGHT");
+  });
+
+  it("addReviewThread sends a range LINE thread with startLine and startSide", async () => {
+    const r = new FakeRunner(() => JSON.stringify({ data: {} }));
+    const gh = new Gh(r, "github.com");
+    await gh.addReviewThread("PRR_1", {
+      path: "a.go", body: "b", subjectType: "LINE",
+      line: 34, side: "RIGHT", startLine: 30, startSide: "RIGHT",
+    });
+    const a = r.calls[0].args;
+    expect(a).toContain("startLine=30");
+    expect(a).toContain("startSide=RIGHT");
+  });
+
+  it("addReviewThread omits line/side entirely for a FILE thread", async () => {
+    const r = new FakeRunner(() => JSON.stringify({ data: {} }));
+    const gh = new Gh(r, "github.com");
+    await gh.addReviewThread("PRR_1", { path: "a.go", body: "b", subjectType: "FILE" });
+    const a = r.calls[0].args;
+    expect(a).toContain("subject=FILE");
+    expect(a.some((x) => x.startsWith("line="))).toBe(false);
+    expect(a.some((x) => x.startsWith("side="))).toBe(false);
+    expect(a.some((x) => x.startsWith("startLine="))).toBe(false);
+  });
+
+  it("submitReview submits with the event and returns the review url", async () => {
+    const r = new FakeRunner(() =>
+      JSON.stringify({ data: { submitPullRequestReview: { pullRequestReview: { url: "http://x/r/9" } } } }));
+    const gh = new Gh(r, "github.com");
+    const res = await gh.submitReview("PRR_1", "APPROVE", "LGTM :+1:");
+    expect(res.url).toBe("http://x/r/9");
+    const a = r.calls[0].args;
+    expect(a.join(" ")).toContain("submitPullRequestReview");
+    expect(a).toContain("rid=PRR_1");
+    expect(a).toContain("event=APPROVE");
+    expect(a).toContain("body=LGTM :+1:");
+  });
+
+  it("findPendingReview returns the pending review id when one exists", async () => {
+    const r = new FakeRunner(() => JSON.stringify({
+      data: { repository: { pullRequest: { reviews: { nodes: [{ id: "PRR_old" }] } } } },
+    }));
+    const gh = new Gh(r, "github.com");
+    expect(await gh.findPendingReview("O", "R", 65, "me")).toBe("PRR_old");
+    const a = r.calls[0].args;
+    expect(a.join(" ")).toContain("states:PENDING");
+    expect(a).toContain("author=me");
+  });
+
+  it("findPendingReview returns null when there is none", async () => {
+    const r = new FakeRunner(() => JSON.stringify({
+      data: { repository: { pullRequest: { reviews: { nodes: [] } } } },
+    }));
+    const gh = new Gh(r, "github.com");
+    expect(await gh.findPendingReview("O", "R", 65, "me")).toBeNull();
+  });
 });
