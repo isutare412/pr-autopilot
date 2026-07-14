@@ -89,16 +89,34 @@ async function openPendingReview(
   return progress.pendingReviewId;
 }
 
-/** Try the precise line thread; on GitHub refusing the anchor, retry the same
- *  finding as a file-level thread. Returns false only when even that is refused.
- *  Task 6 adds the error discrimination — for now any failure propagates. */
+/** GitHub refusing to anchor a comment — the API rejects any line outside the diff
+ *  hunks (the web UI can do it; the API cannot). This is the *only* failure the
+ *  fallback ladder may absorb: anything else (transport, auth, rate limit) must
+ *  propagate, or one network blip would silently post the whole review as body text. */
+const DIFF_REJECTION = /must be part of the diff|diff.?hunk can't be blank|not part of the diff/i;
+
+export function isDiffRejection(e: unknown): boolean {
+  return DIFF_REJECTION.test(String(e));
+}
+
+/** LINE → FILE → caller folds it into the body. Returns false only when GitHub
+ *  refuses the finding as a file-level thread too (a file the PR doesn't touch). */
 async function addThreadWithFallback(gh: Gh, reviewId: string, spec: ThreadSpec): Promise<boolean> {
   if (spec.line) {
-    await gh.addReviewThread(reviewId, spec.line);
-    return true;
+    try {
+      await gh.addReviewThread(reviewId, spec.line);
+      return true;
+    } catch (e) {
+      if (!isDiffRejection(e)) throw e;
+    }
   }
-  await gh.addReviewThread(reviewId, spec.file);
-  return true;
+  try {
+    await gh.addReviewThread(reviewId, spec.file);
+    return true;
+  } catch (e) {
+    if (!isDiffRejection(e)) throw e;
+    return false;
+  }
 }
 
 export async function execute(

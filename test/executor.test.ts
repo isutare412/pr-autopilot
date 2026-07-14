@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { Gh, GhRunner } from "../src/main/core/gh";
 import {
   execute, buildReviewPayload, buildThreadSpecs, fileThreadBody, buildSubmitBody,
-  defaultVerdict, forceApprove,
+  defaultVerdict, forceApprove, isDiffRejection,
 } from "../src/main/core/executor";
 import type { PrRecord, PostProgress } from "../src/main/core/schema";
 
@@ -48,6 +48,39 @@ function ghWith(headSha: string, state = "OPEN"): { gh: Gh; rec: Recorder } {
   });
   return { gh: new Gh(rec, "github.com"), rec };
 }
+
+/** Like ghWith, but `failThread` decides which addPullRequestReviewThread calls blow up.
+ *  `existingPending` is the caller's pending review already on the PR (null = none) —
+ *  a resume test seeds it so Task 7's reconciliation recognises the stored id as live. */
+function ghFailingThreads(
+  failThread: (subject: string, callIndex: number) => Error | null,
+  existingPending: string | null = null,
+): { gh: Gh; rec: Recorder } {
+  let n = 0;
+  const rec = new Recorder((args) => {
+    const joined = args.join(" ");
+    if (args.includes("state,headRefOid,id")) return JSON.stringify({ state: "OPEN", headRefOid: "SHA1", id: "PR_node1" });
+    if (joined.includes("reviews(first:1,states:PENDING"))
+      return JSON.stringify({ data: { repository: { pullRequest: {
+        reviews: { nodes: existingPending ? [{ id: existingPending }] : [] } } } } });
+    if (joined.includes("addPullRequestReview(input"))
+      return JSON.stringify({ data: { addPullRequestReview: { pullRequestReview: { id: "PRR_1" } } } });
+    if (joined.includes("addPullRequestReviewThread")) {
+      const subject = args.find((a) => a.startsWith("subject="))!.slice("subject=".length);
+      const err = failThread(subject, n++);
+      if (err) throw err;
+      return JSON.stringify({ data: { addPullRequestReviewThread: { thread: { id: "T1" } } } });
+    }
+    if (joined.includes("submitPullRequestReview"))
+      return JSON.stringify({ data: { submitPullRequestReview: { pullRequestReview: { url: "http://x/r/1" } } } });
+    return "{}";
+  });
+  return { gh: new Gh(rec, "github.com"), rec };
+}
+
+const DIFF_ERR = new Error(
+  "gh api graphql exited 1: GraphQL: pull_request_review_thread.line must be part of the diff",
+);
 
 /** The thread mutations that actually ran, in order. */
 function threadCalls(rec: Recorder) {
@@ -525,5 +558,62 @@ describe("forceApprove", () => {
     const out = await forceApprove(gh, baseRec({ state: "ERROR", draft: null }), "t");
     expect(out.state).toBe("DONE");
     expect(rec.calls.some((c) => c.args.some((a) => a.includes("/reviews")))).toBe(true);
+  });
+});
+
+describe("execute → fallback ladder", () => {
+  it("a LINE thread GitHub refuses is retried as a FILE thread", async () => {
+    const { gh, rec } = ghFailingThreads((subject) => (subject === "LINE" ? DIFF_ERR : null));
+    const out = await execute(gh, baseRec(), "me", "2026-07-14T00:00:00Z");   // f1 anchorable
+
+    const threads = threadCalls(rec);
+    expect(threads.map((t) => argValue(t, "subject"))).toEqual(["LINE", "FILE"]);
+    expect(argValue(threads[1], "body")).toContain("line 142");   // the FILE body names the line
+    expect(argValue(submitCall(rec)!, "body")).not.toContain("a.go:142");  // not folded — it landed
+    expect(out.postProgress?.threadsAdded).toEqual(["f1"]);
+    expect(out.postProgress?.threadsFailed).toEqual([]);
+  });
+
+  it("a finding refused as both LINE and FILE is folded into the submit body", async () => {
+    const { gh, rec } = ghFailingThreads(() => DIFF_ERR);
+    const out = await execute(gh, baseRec(), "me", "2026-07-14T00:00:00Z");
+
+    expect(threadCalls(rec).map((t) => argValue(t, "subject"))).toEqual(["LINE", "FILE"]);
+    const body = argValue(submitCall(rec)!, "body")!;
+    expect(body).toContain("a.go:142 — **[Critical]** leak");     // the last-resort fold
+    expect(out.postProgress?.threadsFailed).toEqual(["f1"]);
+    expect(out.postProgress?.threadsAdded).toEqual([]);
+  });
+
+  it("a non-validation error propagates instead of degrading the review into body text", async () => {
+    const boom = new Error("gh api graphql exited 1: dial tcp: connection refused");
+    const { gh, rec } = ghFailingThreads(() => boom);
+    await expect(execute(gh, baseRec(), "me", "2026-07-14T00:00:00Z")).rejects.toThrow("connection refused");
+    expect(submitCall(rec)).toBeUndefined();     // nothing submitted — the pending review is left for a retry
+  });
+
+  it("a persisted threadsFailed still reaches the submit body after a resume", async () => {
+    // PRR_1 is live on the PR and is the id we stored, so this resumes into that
+    // same draft — the failed finding must not be lost on the way to submit.
+    const { gh, rec } = ghFailingThreads(() => null, "PRR_1");
+    const r = baseRec();
+    r.postProgress = {
+      repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
+      pendingReviewId: "PRR_1", threadsAdded: [], threadsFailed: ["f1"],
+    };
+    await execute(gh, r, "me", "2026-07-14T00:00:00Z");
+    expect(threadCalls(rec).length).toBe(0);                       // f1 already known-failed; not retried
+    expect(argValue(submitCall(rec)!, "body")).toContain("a.go:142 — **[Critical]** leak");
+  });
+});
+
+describe("isDiffRejection", () => {
+  it("recognises GitHub refusing the line anchor", () => {
+    expect(isDiffRejection(DIFF_ERR)).toBe(true);
+    expect(isDiffRejection(new Error("pull_request_review_thread.diff_hunk can't be blank"))).toBe(true);
+  });
+  it("does not swallow transport or auth failures", () => {
+    expect(isDiffRejection(new Error("dial tcp: connection refused"))).toBe(false);
+    expect(isDiffRejection(new Error("HTTP 401: Bad credentials"))).toBe(false);
   });
 });
