@@ -3,11 +3,18 @@ import { AutoTextarea } from "./AutoTextarea";
 
 interface FindingCardProps {
   f: UiFinding;
+  /** True once the draft has findings already attached to a pending review on
+   *  GitHub that hasn't been submitted yet — dropping or editing one now can't
+   *  un-post what's already there. Mirrors api.ts's draftLocked. */
+  locked?: boolean;
   onToggle: (ref: string, included: boolean) => void;
   onEdit: (ref: string, value: string) => void;
 }
 
-export function FindingCard({ f, onToggle, onEdit }: FindingCardProps) {
+const LOCKED_TITLE =
+  "Already attached to a draft review on GitHub — retry the post to send the rest, or discard the draft review on GitHub.";
+
+export function FindingCard({ f, locked, onToggle, onEdit }: FindingCardProps) {
   const body = f.editedBody ?? f.body;
   const dropped = f.included ? "" : " dropped";
   const toggle = f.included ? "☑" : "☐";
@@ -30,6 +37,8 @@ export function FindingCard({ f, onToggle, onEdit }: FindingCardProps) {
           className="toggle"
           data-ref={f.ref}
           data-included={String(f.included)}
+          disabled={locked}
+          title={locked ? LOCKED_TITLE : undefined}
           onClick={() => onToggle(f.ref, !f.included)}
         >
           {toggle} {f.included ? "include" : "dropped"}
@@ -39,6 +48,8 @@ export function FindingCard({ f, onToggle, onEdit }: FindingCardProps) {
         className="edit"
         data-ref={f.ref}
         value={body}
+        readOnly={locked}
+        title={locked ? LOCKED_TITLE : undefined}
         onChange={(e) => onEdit(f.ref, e.target.value)}
       />
     </div>

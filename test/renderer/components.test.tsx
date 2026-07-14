@@ -237,6 +237,31 @@ describe("FindingCard", () => {
       onToggle={vi.fn()} onEdit={vi.fn()} />);
     expect(screen.queryByText("file-level")).toBeNull();
   });
+
+  it("a locked card disables the toggle and makes the body read-only", () => {
+    const onToggle = vi.fn();
+    const onEdit = vi.fn();
+    render(<FindingCard
+      f={{ ref: "#1", path: "a.go", line: 460, priority: "Critical", body: "leak", editedBody: null,
+           included: true, anchorable: true }}
+      locked onToggle={onToggle} onEdit={onEdit} />);
+    const toggleBtn = screen.getByRole("button", { name: /include/i });
+    expect(toggleBtn).toBeDisabled();
+    fireEvent.click(toggleBtn);
+    expect(onToggle).not.toHaveBeenCalled();
+
+    const ta = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(ta).toHaveAttribute("readonly");
+  });
+
+  it("an unlocked card keeps the toggle enabled and the body editable", () => {
+    render(<FindingCard
+      f={{ ref: "#1", path: "a.go", line: 460, priority: "Critical", body: "leak", editedBody: null,
+           included: true, anchorable: true }}
+      onToggle={vi.fn()} onEdit={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /include/i })).toBeEnabled();
+    expect(screen.getByRole("textbox")).not.toHaveAttribute("readonly");
+  });
 });
 
 describe("ActionsBar", () => {
@@ -397,6 +422,62 @@ describe("Detail — View on GitHub link", () => {
   it("shows the link while a review is still generating", () => {
     render(<Detail record={rec({ state: "GENERATING", draft: null })} onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />);
     expect(screen.getByRole("link", { name: /view on github/i })).toHaveAttribute("href", "https://github.com/owner/repo/pull/1");
+  });
+});
+
+describe("Detail — locked draft (postProgress carries an unposted pending review)", () => {
+  const noop = () => {};
+  const findingsRec = (postProgress: any) =>
+    ({
+      key: "k", host: "github.com", owner: "owner", repo: "repo", number: 1,
+      url: "https://github.com/owner/repo/pull/1", title: "Test PR", author: "author",
+      baseRef: "main", state: "ERROR", mode: "first-review", headSha: "", draftVersion: 1,
+      draft: {
+        overallEn: "review", counts: { critical: 1, major: 0, minor: 0, nit: 0 },
+        findings: [{ ref: "#1", path: "a.go", line: 5, priority: "Critical", body: "leak",
+          editedBody: null, included: true, anchorable: true }],
+        verify: [],
+      },
+      feedbackHistory: [], postResult: null, postProgress,
+      error: { step: "post", message: "boom" },
+      discoveredAt: "", generatedAt: null, updatedAt: "", doneAt: null,
+    }) as import("../../src/renderer/src/types").UiRecord;
+
+  it("disables the toggle and shows the locked reason when a pending review holds attached findings", () => {
+    render(
+      <Detail
+        record={findingsRec({ repliesPosted: [], threadsResolved: [], reviewPosted: false, reviewerRequested: false,
+          pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: [] })}
+        onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop}
+        onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop}
+      />,
+    );
+    expect(screen.getByText(/already attached to a draft review on GitHub/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /include/i })).toBeDisabled();
+  });
+
+  it("leaves the toggle enabled once the review has been submitted", () => {
+    render(
+      <Detail
+        record={findingsRec({ repliesPosted: [], threadsResolved: [], reviewPosted: true, reviewerRequested: false,
+          pendingReviewId: "PRR_1", threadsAdded: ["f1"], threadsFailed: [] })}
+        onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop}
+        onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop}
+      />,
+    );
+    expect(screen.queryByText(/already attached to a draft review on GitHub/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /include/i })).toBeEnabled();
+  });
+
+  it("leaves the toggle enabled when postProgress has no pendingReviewId", () => {
+    render(
+      <Detail
+        record={findingsRec(null)}
+        onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop}
+        onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /include/i })).toBeEnabled();
   });
 });
 

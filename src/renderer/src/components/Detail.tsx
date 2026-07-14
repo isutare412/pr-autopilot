@@ -29,6 +29,30 @@ function mdLite(s: string): string {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
+// Same wording as api.ts's DRAFT_LOCKED_MESSAGE — kept as a separate literal
+// (not imported) so the renderer bundle carries no server-side import, same
+// rule as the mirrored types in ../types.ts.
+const DRAFT_LOCKED_MESSAGE =
+  "Some findings are already attached to a draft review on GitHub. Retry the post to send the rest, or discard the draft review on GitHub.";
+
+/** True once part of the draft is already attached to a pending review on GitHub
+ *  that hasn't been submitted yet. Mirrors api.ts's draftLocked. */
+function draftLocked(record: UiRecord): boolean {
+  return !!record.postProgress?.pendingReviewId && !record.postProgress.reviewPosted;
+}
+
+function LockedBanner() {
+  return (
+    <div className="locked-banner" role="status">
+      <svg className="locked-banner__icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+        <rect x="5" y="11" width="14" height="9" rx="2" />
+        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+      </svg>
+      <span>{DRAFT_LOCKED_MESSAGE}</span>
+    </div>
+  );
+}
+
 function PrHead({ number, title, url }: { number: number; title: string; url: string }) {
   return (
     <div className="pr-head">
@@ -105,6 +129,7 @@ export function Detail({ record, onToggle, onEdit, onApprove, onForceApprove, on
   }
 
   const { draft } = record;
+  const locked = draftLocked(record);
 
   return (
     <>
@@ -122,8 +147,9 @@ export function Detail({ record, onToggle, onEdit, onApprove, onForceApprove, on
         </>
       )}
       <h3>New findings</h3>
+      {locked && <LockedBanner />}
       {draft.findings.map((f) => (
-        <FindingCard key={f.ref} f={f} onToggle={onToggle} onEdit={onEdit} />
+        <FindingCard key={f.ref} f={f} locked={locked} onToggle={onToggle} onEdit={onEdit} />
       ))}
       <ActionsBar
         key={record.key}

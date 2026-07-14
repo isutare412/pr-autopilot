@@ -1041,6 +1041,16 @@ body {
   border-color: var(--accent);
 }
 
+.toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.toggle:disabled:hover {
+  color: var(--muted);
+  border-color: var(--line);
+}
+
 /* ---- Editable body textarea ---- */
 
 .edit {
@@ -1063,8 +1073,43 @@ body {
   box-shadow: 0 0 0 1px var(--accent-dim);
 }
 
+.edit:read-only {
+  cursor: default;
+  color: var(--muted);
+}
+
+.edit:read-only:focus {
+  border-color: var(--line);
+  box-shadow: none;
+}
+
 .dropped .edit {
   opacity: 0.7;
+}
+
+/* ---- Locked-draft banner ---- */
+/* A pending review already holds part of this draft on GitHub — dropping or
+   editing a finding now can't unpost it, so the controls below are disabled
+   and this explains why (mirrors api.ts's draftLocked). */
+
+.locked-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--crit);
+  border-radius: var(--r);
+  background: var(--card);
+  padding: 9px 12px;
+  margin: 4px 0 10px;
+  font: 12px/1.5 var(--ui);
+  color: var(--fg);
+}
+
+.locked-banner__icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--crit);
 }
 
 /* ---- Sticky actions bar ---- */
