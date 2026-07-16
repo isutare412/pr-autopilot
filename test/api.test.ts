@@ -343,6 +343,7 @@ describe("api", () => {
       number: 65,
       repo: "R",
       title: "t",
+      author: "a",
       state: "NEEDS_REVIEW",
       mode: "first-review",
       counts: { critical: 0, major: 0, minor: 0, nit: 1 },

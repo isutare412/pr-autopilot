@@ -74,8 +74,8 @@ function findItem(rec: PrRecord, ref: string) {
 export const api = {
   list(deps: ApiDeps) {
     const items = deps.store.list().map((r) => ({
-      key: r.key, number: r.number, repo: r.repo, title: r.title, state: r.state,
-      mode: r.mode, counts: r.draft?.counts ?? null, updatedAt: r.updatedAt,
+      key: r.key, number: r.number, repo: r.repo, title: r.title, author: r.author,
+      state: r.state, mode: r.mode, counts: r.draft?.counts ?? null, updatedAt: r.updatedAt,
       dismissed: !!r.dismissed,
     }));
     return { items };
