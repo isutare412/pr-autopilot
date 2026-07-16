@@ -422,6 +422,31 @@ describe("ActionsBar", () => {
     fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
     expect(screen.queryByText("Approve anyway")).not.toBeInTheDocument();
   });
+
+  it("warns the summary when approving with included findings, and stays quiet on comment", () => {
+    const minorDraft = {
+      ...draft, counts: { critical: 0, major: 0, minor: 1, nit: 0 },
+      findings: [{ ref: "#1", path: "a.ts", line: 5, priority: "Minor", body: "b", editedBody: null, included: true, anchorable: true }],
+    };
+    render(<ActionsBar {...props} draft={minorDraft} state="NEEDS_REVIEW" />);
+    // A Minor finding defaults the verdict to comment — the summary stays quiet.
+    expect(screen.getByText(/1 comment · re-requests you/).className).not.toContain("summary--warn");
+    fireEvent.click(screen.getByRole("radio", { name: /approve/i }));
+    const summary = screen.getByText(/1 comment will post · approves, done/);
+    expect(summary.className).toContain("summary--warn");
+  });
+
+  it("keeps a clean approve and an all-excluded approve quiet", () => {
+    render(<ActionsBar {...props} state="NEEDS_REVIEW" />);
+    expect(screen.getByText(/LGTM · approves, done/).className).not.toContain("summary--warn");
+    cleanup();
+    const excludedDraft = {
+      ...draft, counts: { critical: 0, major: 0, minor: 1, nit: 0 },
+      findings: [{ ref: "#1", path: "a.ts", line: 5, priority: "Minor", body: "b", editedBody: null, included: false, anchorable: true }],
+    };
+    render(<ActionsBar {...props} draft={excludedDraft} state="NEEDS_REVIEW" />);
+    expect(screen.getByText(/LGTM · approves, done/).className).not.toContain("summary--warn");
+  });
 });
 
 describe("Detail empty state", () => {

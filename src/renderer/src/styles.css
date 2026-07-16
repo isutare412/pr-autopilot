@@ -1401,6 +1401,15 @@ body {
   color: var(--crit);
 }
 
+.summary--warn,
+.summary--warn::before {
+  color: var(--major);
+}
+
+.summary--warn::before {
+  content: "\26A0  ";
+}
+
 /* ---- Feedback row ---- */
 
 .fb {

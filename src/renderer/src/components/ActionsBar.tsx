@@ -43,6 +43,13 @@ export function defaultVerdict(draft: UiDraft): Verdict {
   return hasNonNit || hasOpenThreads ? "comment" : "approve";
 }
 
+/** True when Post would submit an APPROVE that still carries included findings —
+ *  the one combination that reads as a surprise on GitHub (an LGTM is expected
+ *  to be bare), so the summary shouts instead of whispering. */
+export function approveCarriesComments(draft: UiDraft, verdict: Verdict): boolean {
+  return verdict === "approve" && draft.findings.some((f) => f.included);
+}
+
 /** A one-line read-out of what Post will do, ending in the consequence so the
  *  disposition's effect is never a surprise. */
 function postSummary(draft: UiDraft, verdict: Verdict): string {
@@ -50,7 +57,7 @@ function postSummary(draft: UiDraft, verdict: Verdict): string {
   const resolves = draft.verify.filter((v) => v.included && v.verdict === "resolve").length;
   const followups = draft.verify.filter((v) => v.included && v.verdict === "follow-up").length;
   const parts: string[] = [];
-  if (comments) parts.push(`${comments} comment${comments > 1 ? "s" : ""}`);
+  if (comments) parts.push(`${comments} comment${comments > 1 ? "s" : ""}${verdict === "approve" ? " will post" : ""}`);
   if (followups) parts.push(`${followups} repl${followups > 1 ? "ies" : "y"}`);
   if (resolves) parts.push(`resolve ${resolves} thread${resolves > 1 ? "s" : ""}`);
   const content = parts.length ? parts.join(" · ") : verdict === "approve" ? "LGTM" : "replies only";
@@ -102,7 +109,7 @@ export function ActionsBar({ draft, state, dismissed, postVerdict, locked, onApp
           <button id="approve" className={verdict} onClick={() => onApprove(verdict)}>
             {isError ? "Retry post" : "Post"}
           </button>
-          <span className={`summary${isError ? " summary--error" : ""}`}>
+          <span className={`summary${isError ? " summary--error" : approveCarriesComments(draft, verdict) ? " summary--warn" : ""}`}>
             {isError ? "last post didn’t finish — retry to send the rest" : postSummary(draft, verdict)}
           </span>
         </>
