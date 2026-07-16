@@ -41,13 +41,13 @@ export function QueueRow({ row, selected, onOpen, onDismiss, onRestore }: QueueR
       onClick={() => onOpen(row.key)}
     >
       <div className="row-num">#{row.number}</div>
-      <div className="row-repo">
-        {row.repo}
-        {row.author ? <span className="row-author">{row.author}</span> : null}
-      </div>
+      <div className="row-repo">{row.repo}</div>
       <div className="row-counts">{badge}</div>
       <div className="row-title">{row.title}</div>
-      <div className="row-state">{row.state}</div>
+      <div className="row-meta">
+        <div className="row-state">{row.state}</div>
+        {row.author ? <div className="row-author">{row.author}</div> : null}
+      </div>
       <button
         className="row-action"
         data-key={row.key}

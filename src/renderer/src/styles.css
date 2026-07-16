@@ -404,15 +404,21 @@ body {
   white-space: nowrap;
 }
 
-.row-author {
-  font-weight: 400;
-  color: var(--muted);
-  margin-left: 7px;
+.row-meta {
+  grid-area: state;
+  margin-top: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
 }
 
-.row-author::before {
-  content: "· ";
-  color: var(--faint);
+.row-author {
+  font: 11px/1.4 var(--mono);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .row-title {
@@ -435,9 +441,7 @@ body {
 }
 
 .row-state {
-  grid-area: state;
-  justify-self: start;
-  margin-top: 4px;
+  flex: none;
   font: 600 10px/1.4 var(--mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
