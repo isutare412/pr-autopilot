@@ -37,6 +37,14 @@ describe("QueueRow", () => {
     fireEvent.click(screen.getByRole("button", { name: /show #7/i }));
     expect(onRestore).toHaveBeenCalledWith("k");
   });
+
+  it("renders the author next to the repo, and omits it when absent", () => {
+    render(<QueueRow row={row({ author: "minjae-jung" })} selected={false} onOpen={vi.fn()} onDismiss={vi.fn()} onRestore={vi.fn()} />);
+    expect(screen.getByText("minjae-jung")).toBeInTheDocument();
+    cleanup();
+    render(<QueueRow row={row()} selected={false} onOpen={vi.fn()} onDismiss={vi.fn()} onRestore={vi.fn()} />);
+    expect(document.querySelector(".row-author")).toBeNull();
+  });
 });
 
 describe("RowActionsMenu", () => {

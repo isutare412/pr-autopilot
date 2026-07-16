@@ -33,6 +33,7 @@ export interface UiRow {
   key: string;
   number: number;
   repo: string;
+  author?: string;
   title: string;
   state: string;
   mode: string;

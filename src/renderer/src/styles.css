@@ -404,6 +404,17 @@ body {
   white-space: nowrap;
 }
 
+.row-author {
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 7px;
+}
+
+.row-author::before {
+  content: "· ";
+  color: var(--faint);
+}
+
 .row-title {
   grid-area: title;
   font-size: 12px;
