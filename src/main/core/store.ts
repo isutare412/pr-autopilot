@@ -54,7 +54,7 @@ export class Store {
 
   private writeIndex(): void {
     const idx = this.list().map((r) => ({
-      key: r.key, number: r.number, repo: r.repo, title: r.title,
+      key: r.key, number: r.number, repo: r.repo, title: r.title, author: r.author,
       state: r.state, mode: r.mode, counts: r.draft?.counts ?? null,
       updatedAt: r.updatedAt,
     }));

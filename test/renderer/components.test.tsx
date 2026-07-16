@@ -436,6 +436,17 @@ describe("ActionsBar", () => {
     expect(summary.className).toContain("summary--warn");
   });
 
+  it("keeps summary--error precedence over the approve warning in ERROR state", () => {
+    const minorDraft = {
+      ...draft, counts: { critical: 0, major: 0, minor: 1, nit: 0 },
+      findings: [{ ref: "#1", path: "a.ts", line: 5, priority: "Minor", body: "b", editedBody: null, included: true, anchorable: true }],
+    };
+    render(<ActionsBar {...props} draft={minorDraft} state="ERROR" />);
+    const summary = screen.getByText((content) => content.startsWith("last post") && content.includes("finish"));
+    expect(summary.className).toContain("summary--error");
+    expect(summary.className).not.toContain("summary--warn");
+  });
+
   it("keeps a clean approve and an all-excluded approve quiet", () => {
     render(<ActionsBar {...props} state="NEEDS_REVIEW" />);
     expect(screen.getByText(/LGTM · approves, done/).className).not.toContain("summary--warn");
