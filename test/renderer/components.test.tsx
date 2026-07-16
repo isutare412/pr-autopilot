@@ -477,6 +477,46 @@ describe("Detail — View on GitHub link", () => {
   });
 });
 
+describe("Detail — PR author", () => {
+  const noop = () => {};
+  const rec = (over = {}) =>
+    ({
+      key: "k",
+      host: "github.com",
+      owner: "owner",
+      repo: "repo",
+      number: 1,
+      url: "https://github.com/owner/repo/pull/1",
+      title: "Test PR",
+      author: "minjae-jung",
+      baseRef: "main",
+      state: "NEEDS_REVIEW",
+      mode: "first-review",
+      headSha: "",
+      draftVersion: 1,
+      draft: { overallEn: "looks good", counts: { critical: 0, major: 0, minor: 0, nit: 0 }, findings: [], verify: [] },
+      feedbackHistory: [],
+      postResult: null,
+      postProgress: null,
+      error: null,
+      discoveredAt: "",
+      generatedAt: null,
+      updatedAt: "",
+      doneAt: null,
+      ...over,
+    }) as import("../../src/renderer/src/types").UiRecord;
+
+  it("shows 'by <author>' in the header", () => {
+    render(<Detail record={rec()} onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />);
+    expect(screen.getByText("by minjae-jung")).toBeInTheDocument();
+  });
+
+  it("omits the author when empty", () => {
+    render(<Detail record={rec({ author: "" })} onToggle={noop} onEdit={noop} onApprove={noop} onForceApprove={noop} onDismiss={noop} onRestore={noop} onDelete={noop} onFeedback={noop} />);
+    expect(document.querySelector(".pr-author")).toBeNull();
+  });
+});
+
 describe("Detail — locked draft (postProgress carries an unposted pending review)", () => {
   const noop = () => {};
   const findingsRec = (postProgress: any) =>

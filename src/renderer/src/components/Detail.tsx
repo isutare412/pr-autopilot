@@ -89,11 +89,12 @@ function PostErrorBanner({ step, message }: { step: string; message: string }) {
   );
 }
 
-function PrHead({ number, title, url }: { number: number; title: string; url: string }) {
+function PrHead({ number, title, author, url }: { number: number; title: string; author?: string; url: string }) {
   return (
     <div className="pr-head">
       <span className="pr-num">#{number}</span>
       <span className="pr-title">{title}</span>
+      {author ? <span className="pr-author">by {author}</span> : null}
       <a className="pr-link" href={url} target="_blank" rel="noreferrer">
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
@@ -128,7 +129,7 @@ export function Detail({ record, onToggle, onEdit, onApprove, onForceApprove, on
   if (record.state === "GENERATING") {
     return (
       <div className="detail-generating">
-        <PrHead number={record.number} title={record.title} url={record.url} />
+        <PrHead number={record.number} title={record.title} author={record.author} url={record.url} />
         <GeneratingPane record={record} />
       </div>
     );
@@ -138,7 +139,7 @@ export function Detail({ record, onToggle, onEdit, onApprove, onForceApprove, on
     const e = record.error;
     return (
       <>
-        <PrHead number={record.number} title={record.title} url={record.url} />
+        <PrHead number={record.number} title={record.title} author={record.author} url={record.url} />
         {e ? (
           <div className="error-box">
             <div className="error-head">
@@ -170,7 +171,7 @@ export function Detail({ record, onToggle, onEdit, onApprove, onForceApprove, on
 
   return (
     <>
-      <PrHead number={record.number} title={record.title} url={record.url} />
+      <PrHead number={record.number} title={record.title} author={record.author} url={record.url} />
       <div
         className="overall"
         dangerouslySetInnerHTML={{ __html: mdLite(draft.overallEn) }}
