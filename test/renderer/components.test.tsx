@@ -410,7 +410,7 @@ describe("ActionsBar", () => {
     expect(onApprove).toHaveBeenCalledWith("comment");
   });
 
-  it("exposes Approve anyway in POSTED_AWAITING_AUTHOR but not in NEEDS_REVIEW", () => {
+  it("exposes Approve anyway in POSTED_AWAITING_AUTHOR and NEEDS_REVIEW but not in-flight", () => {
     const onForceApprove = vi.fn();
     render(<ActionsBar {...props} state="POSTED_AWAITING_AUTHOR" onForceApprove={onForceApprove} />);
     fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
@@ -418,7 +418,14 @@ describe("ActionsBar", () => {
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     expect(onForceApprove).toHaveBeenCalledTimes(1);
     cleanup();
-    render(<ActionsBar {...props} state="NEEDS_REVIEW" onForceApprove={vi.fn()} />);
+    const onForceApproveNeedsReview = vi.fn();
+    render(<ActionsBar {...props} state="NEEDS_REVIEW" onForceApprove={onForceApproveNeedsReview} />);
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.click(screen.getByText("Approve anyway"));
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    expect(onForceApproveNeedsReview).toHaveBeenCalledTimes(1);
+    cleanup();
+    render(<ActionsBar {...props} state="POSTING" onForceApprove={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
     expect(screen.queryByText("Approve anyway")).not.toBeInTheDocument();
   });

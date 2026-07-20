@@ -4,11 +4,13 @@ import { RowActionsMenu } from "./RowActionsMenu";
 
 type Verdict = "approve" | "comment";
 
-/** Force-approve ("give up & LGTM") is offered only from stuck states — the normal
- *  Post flow already lives in NEEDS_REVIEW, and in-flight/terminal states have nothing
- *  to give up on. */
+/** Force-approve ("give up & LGTM") is offered from stuck states and from
+ *  NEEDS_REVIEW — where Post-with-approve still ships the included findings, so the
+ *  bare-LGTM escape (draft left unposted) needs its own entry. In-flight/terminal
+ *  states have nothing to give up on. */
 export function canForceApprove(state: string): boolean {
-  return state === "POSTED_AWAITING_AUTHOR" || state === "STALE" || state === "ERROR";
+  return state === "NEEDS_REVIEW" || state === "POSTED_AWAITING_AUTHOR" ||
+    state === "STALE" || state === "ERROR";
 }
 
 interface ActionsBarProps {
