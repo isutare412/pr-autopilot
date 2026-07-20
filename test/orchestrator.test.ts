@@ -31,7 +31,6 @@ function mkOrch() {
     generate: vi.fn(async () => draft),
     notifier: { send: vi.fn(async () => {}) },
     nowIso: () => "2026-06-29T00:00:00Z",
-    login: "me",
     retentionDays: () => 30,
     concurrency: 2,
     host: "github.com",
@@ -140,7 +139,6 @@ describe("Orchestrator", () => {
       generate: vi.fn(async (input: any) => { capturedInput = input; return draft; }),
       notifier: { send: vi.fn(async () => {}) },
       nowIso: () => "2026-06-29T00:00:00Z",
-      login: "me",
       retentionDays: () => 30,
       concurrency: 2,
       host: "github.com",
@@ -446,6 +444,57 @@ describe("Orchestrator — poll sweep", () => {
   });
 });
 
+/** Startup used to await gh.login() fatally before anything else, so an
+ *  unreachable GitHub host (enterprise VPN off) killed the whole app. The
+ *  orchestrator now resolves the login itself, lazily, on the first call that
+ *  needs it — a failure surfaces through the caller's existing error handling
+ *  (poll: logged and retried next tick; post: ERROR record) instead of
+ *  aborting boot. */
+describe("Orchestrator — lazy login resolution", () => {
+  it("runPoll resolves login via gh.login() on first use and caches it across polls", async () => {
+    const { orch } = mkOrch();
+    const gh = (orch as any).d.gh;
+    gh.login = vi.fn(async () => "me");
+    const searched: string[] = [];
+    gh.searchReviewRequested = vi.fn(async (login: string) => { searched.push(login); return []; });
+    await orch.runPoll();
+    await orch.runPoll();
+    expect(gh.login).toHaveBeenCalledTimes(1);
+    expect(searched).toEqual(["me", "me"]);
+  });
+
+  it("runPoll rejects while the host is unreachable, then recovers on the next poll", async () => {
+    const { orch } = mkOrch();
+    const gh = (orch as any).d.gh;
+    let up = false;
+    gh.login = vi.fn(async () => {
+      if (!up) throw new Error("gh api /user exited 1: error connecting to ghe.example.com");
+      return "me";
+    });
+    const searched: string[] = [];
+    gh.searchReviewRequested = vi.fn(async (login: string) => { searched.push(login); return []; });
+
+    await expect(orch.runPoll()).rejects.toThrow(/error connecting/);
+    expect(searched).toEqual([]); // never searched with a bogus login
+
+    up = true; // VPN back
+    await orch.runPoll();
+    expect(searched).toEqual(["me"]);
+  });
+
+  it("runPost records ERROR on the record when login cannot be resolved", async () => {
+    const { orch, store } = mkOrch();
+    const gh = (orch as any).d.gh;
+    gh.login = vi.fn(async () => { throw new Error("error connecting to ghe.example.com"); });
+    const key = seed(store, 50, "POSTING", { draft, draftVersion: 1 });
+    await orch.runPost(key);
+    const rec = store.get(key)!;
+    expect(rec.state).toBe("ERROR");
+    expect(rec.error?.step).toBe("post");
+    expect(rec.error?.message).toMatch(/error connecting/);
+  });
+});
+
 describe("Orchestrator — live settings", () => {
   it("setConcurrency forwards to both the gen and post queues", () => {
     const { orch } = mkOrch();
@@ -465,7 +514,7 @@ describe("Orchestrator — live settings", () => {
       generate: vi.fn(async () => draft),
       notifier: { send: vi.fn(async () => {}) },
       nowIso: () => "2026-06-29T00:00:00Z",
-      login: "me", retentionDays: () => days, concurrency: 2, host: "h",
+      retentionDays: () => days, concurrency: 2, host: "h",
       language: () => "en", effort: () => "high", operatingMode: () => "supervised",
     });
     orch.pruneNow();

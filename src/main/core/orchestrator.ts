@@ -15,7 +15,6 @@ export interface OrchestratorDeps {
   generate: (input: { url: string; priorDraft?: Draft; feedback?: string; language: Language; effort: Effort }, onActivity?: (labels: string[]) => void) => Promise<Draft>;
   notifier: { send: (title: string, message: string, url: string) => Promise<void> };
   nowIso: () => string;
-  login: string;
   retentionDays: () => number;
   concurrency: number;
   host: string;
@@ -81,6 +80,7 @@ export class Orchestrator {
   readonly postQueue: JobQueue;
   generate: OrchestratorDeps["generate"];
   private d: OrchestratorDeps;
+  private login: string | null = null;
 
   constructor(deps: OrchestratorDeps) {
     this.d = deps;
@@ -93,6 +93,17 @@ export class Orchestrator {
   setConcurrency(n: number): void {
     this.genQueue.setConcurrency(n);
     this.postQueue.setConcurrency(n);
+  }
+
+  /** Resolve the viewer's login lazily, caching the first success. Startup used
+   *  to await gh.login() before anything else, which made an unreachable GitHub
+   *  host (enterprise VPN off) fatal to boot. Resolving here instead means a
+   *  failure surfaces through the caller's existing error handling — runPoll's
+   *  logged-and-retried rejection, runPost's ERROR record — and the next call
+   *  simply tries again once the host is reachable. */
+  private async resolveLogin(): Promise<string> {
+    if (this.login === null) this.login = await this.d.gh.login();
+    return this.login;
   }
 
   enqueueGen = (key: string, feedback?: string) => {
@@ -223,7 +234,7 @@ export class Orchestrator {
       const rec = this.store.get(key);
       if (!rec || !rec.draft) return;
       try {
-        const updated = await execute(this.d.gh, rec, this.d.login, this.d.nowIso(),
+        const updated = await execute(this.d.gh, rec, await this.resolveLogin(), this.d.nowIso(),
           (p) => { const cur = this.store.get(key); if (cur) this.store.put({ ...cur, postProgress: p }); });
         this.store.put(updated);
         if (updated.state === "STALE") {
@@ -271,7 +282,8 @@ export class Orchestrator {
   }
 
   async runPoll(): Promise<void> {
-    const queue = await this.d.gh.searchReviewRequested(this.d.login);
+    const login = await this.resolveLogin();
+    const queue = await this.d.gh.searchReviewRequested(login);
     const existing = new Map(this.store.list().map((r) => [r.key, r]));
     const liveHeads = new Map<string, string>();
     const authorRepliedKeys = new Set<string>();
@@ -287,7 +299,7 @@ export class Orchestrator {
           // not merely because some past reply exists — else an open follow-up
           // thread would re-trigger every poll. A silent code push is still
           // caught independently via the head-SHA advance in decideWork.
-          if (authorAwaitingReview(threads, this.d.login)) authorRepliedKeys.add(key);
+          if (authorAwaitingReview(threads, login)) authorRepliedKeys.add(key);
         }
       } catch (e) {
         console.error(`[poll] ${key} read failed:`, e);

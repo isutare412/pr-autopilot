@@ -32,7 +32,10 @@ app.whenReady().then(async () => {
 
     const store = new Store(dataDir);
     const gh = new Gh(realGhRunner(), settingsStore.get().githubHost);
-    const login = await gh.login();
+    // NB: no network calls in this try-block. The viewer login is resolved lazily
+    // by the orchestrator on the first poll/post that needs it, so an unreachable
+    // GitHub host (e.g. enterprise VPN off) degrades to logged, retried poll
+    // failures instead of aborting boot via the showErrorBox catch below.
     const nowIso = () => new Date().toISOString();
 
     const genBase = {
@@ -51,7 +54,7 @@ app.whenReady().then(async () => {
           claudePath: expandTilde(settingsStore.get().claudePath) },
         input, onActivity),
       notifier: electronNotifier(() => settingsStore.get().notify, (url) => { showMain(); openExternal(url); }),
-      nowIso, login,
+      nowIso,
       retentionDays: () => settingsStore.get().retentionDays,
       concurrency: settingsStore.get().genConcurrency,
       host: settingsStore.get().githubHost,
